@@ -554,7 +554,7 @@ class SpotifyService(Generic, Reconfigurable):
 
 
 Registry.register_resource_creator(
-    Generic.SUBTYPE,
+    Generic.API,
     SpotifyService.MODEL,
     ResourceCreatorRegistration(SpotifyService.new, SpotifyService.validate_config),
 )

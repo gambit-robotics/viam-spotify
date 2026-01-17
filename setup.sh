@@ -1,27 +1,20 @@
 #!/bin/bash
 set -e
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_NAME="venv"
+PYTHON="python3"
 
-# Install system Python dependencies based on platform
-if command -v apt-get &> /dev/null; then
-    # Debian/Ubuntu
-    sudo apt-get update
-    sudo apt-get install -y python3-pip python3-venv
-elif command -v yum &> /dev/null; then
-    # RHEL/CentOS/Fedora
-    sudo yum install -y python3-pip python3-virtualenv
-elif command -v brew &> /dev/null; then
-    # macOS with Homebrew
-    brew install python3 || true
+# Create virtualenv if it doesn't exist
+if [ ! -d "$SCRIPT_DIR/$VENV_NAME" ]; then
+    echo "Creating virtual environment..."
+    $PYTHON -m venv "$SCRIPT_DIR/$VENV_NAME"
 fi
 
-# Create virtual environment
-python3 -m venv .venv
+# Activate and install dependencies
+echo "Installing dependencies..."
+source "$SCRIPT_DIR/$VENV_NAME/bin/activate"
+pip install --upgrade pip -q
+pip install -r "$SCRIPT_DIR/requirements.txt" -q
 
-# Activate venv and install dependencies
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-
-chmod +x exec.sh
+echo "Setup complete."

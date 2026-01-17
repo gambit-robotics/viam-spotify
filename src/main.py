@@ -8,7 +8,7 @@ from .spotify_service import SpotifyService  # noqa: F401
 
 async def main():
     module = Module.from_args()
-    module.add_model_from_registry(Generic.SUBTYPE, SpotifyService.MODEL)
+    module.add_model_from_registry(Generic.API, SpotifyService.MODEL)
     await module.start()
 
 

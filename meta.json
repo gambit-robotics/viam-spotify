@@ -1,0 +1,20 @@
+{
+  "$schema": "https://dl.viam.dev/module.schema.json",
+  "module_id": "gambit-robotics:spotify",
+  "visibility": "private",
+  "url": "https://github.com/gambit-robotics/viam-spotify",
+  "description": "Spotify playback control module for Viam with QR code authentication",
+  "models": [
+    {
+      "api": "rdk:service:generic",
+      "model": "gambit-robotics:service:spotify",
+      "short_description": "Spotify playback control with QR code authentication",
+      "markdown_link": "README.md"
+    }
+  ],
+  "markdown_link": "README.md",
+  "entrypoint": "./exec.sh",
+  "build": {
+    "setup": "./setup.sh"
+  }
+}

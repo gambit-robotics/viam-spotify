@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Install Python dependencies based on platform
+# Install system Python dependencies based on platform
 if command -v apt-get &> /dev/null; then
     # Debian/Ubuntu
     sudo apt-get update
@@ -16,7 +16,12 @@ elif command -v brew &> /dev/null; then
     brew install python3 || true
 fi
 
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate venv and install dependencies
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
 
 chmod +x exec.sh

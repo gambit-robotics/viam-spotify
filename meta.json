@@ -15,6 +15,12 @@
   "markdown_link": "README.md",
   "entrypoint": "./exec.sh",
   "build": {
-    "setup": "./setup.sh"
+    "setup": "./setup.sh",
+    "arch": [
+      "linux/amd64",
+      "linux/arm64",
+      "darwin/amd64",
+      "darwin/arm64"
+    ]
   }
 }

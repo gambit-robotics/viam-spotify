@@ -4,25 +4,15 @@ A Viam service module for Spotify playback control with QR code authentication. 
 
 ## Model
 
-- `gambit-robotics:service:spotify` - Spotify playback control service
+`gambit-robotics:service:spotify` - Spotify playback control service
 
-## Features
-
-- QR code authentication flow (scan with phone to authenticate)
-- Full playback control (play, pause, skip, seek, volume, shuffle, repeat)
-- Now playing info with album artwork and dominant colors
-- Search (tracks, albums, artists, playlists)
-- Library access (playlists, saved tracks, recently played)
-- Device management and playback transfer
-- Token persistence (survives restarts)
-
-## Requirements
+### Requirements
 
 - Spotify Premium account (required for playback control)
 - Spotify Developer App (client ID only, no secret needed - uses PKCE)
 - Device must be on same network as phone for QR auth
 
-## Spotify Developer Setup
+### Spotify Developer Setup
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
@@ -31,9 +21,15 @@ A Viam service module for Spotify playback control with QR code authentication. 
 
 > **Note:** This module uses [PKCE authentication](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) which doesn't require a client secret. Each user authenticates with their own Spotify account and gets access to their own playlists, library, and playback.
 
-## Configuration
+### Attributes
 
-Add this module to your Viam robot configuration:
+| Attribute | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `client_id` | string | **Yes** | - | Spotify app client ID |
+| `auth_port` | int | No | `8888` | Port for OAuth callback server |
+| `token_path` | string | No | `/tmp/.spotify_token` | Path to store auth tokens |
+
+### Example Configuration
 
 ```json
 {
@@ -60,13 +56,15 @@ Add this module to your Viam robot configuration:
 }
 ```
 
-### Attributes
+## Features
 
-| Attribute | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `client_id` | string | **Yes** | - | Spotify app client ID |
-| `auth_port` | int | No | `8888` | Port for OAuth callback server |
-| `token_path` | string | No | `/tmp/.spotify_token` | Path to store auth tokens |
+- QR code authentication flow (scan with phone to authenticate)
+- Full playback control (play, pause, skip, seek, volume, shuffle, repeat)
+- Now playing info with album artwork and dominant colors
+- Search (tracks, albums, artists, playlists)
+- Library access (playlists, saved tracks, recently played)
+- Device management and playback transfer
+- Token persistence (survives restarts)
 
 ## Authentication Flow
 

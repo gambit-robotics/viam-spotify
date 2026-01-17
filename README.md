@@ -1,6 +1,6 @@
 # Spotify Module for Viam
 
-A Viam service module for Spotify playback control with QR code authentication. Designed for kiosk displays and headless devices where browser-based OAuth isn't practical.
+A Viam service module for Spotify playback control with device authorization. Designed for kiosk displays, IoT devices, and commercial deployments.
 
 ## Model
 
@@ -9,24 +9,22 @@ A Viam service module for Spotify playback control with QR code authentication. 
 ### Requirements
 
 - Spotify Premium account (required for playback control)
-- Spotify Developer App (client ID only, no secret needed - uses PKCE)
-- Device must be on same network as phone for QR auth
+- Spotify Developer App (client ID only)
 
 ### Spotify Developer Setup
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
-3. Add redirect URI: `http://<your-device-ip>:8888/callback`
-4. Copy your **Client ID** (no secret needed)
+3. Check the Web API checkbox
+4. Copy your **Client ID**
 
-> **Note:** This module uses [PKCE authentication](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) which doesn't require a client secret. Each user authenticates with their own Spotify account and gets access to their own playlists, library, and playback.
+> **Note:** This module uses [Device Authorization Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-flow) - no redirect URIs needed. Users authenticate by visiting spotify.com/pair and entering a code. This works on any device, any network, without configuration.
 
 ### Attributes
 
 | Attribute | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `client_id` | string | **Yes** | - | Spotify app client ID |
-| `auth_port` | int | No | `8888` | Port for OAuth callback server |
 | `token_path` | string | No | `/tmp/.spotify_token` | Path to store auth tokens |
 
 ### Example Configuration
@@ -48,7 +46,6 @@ A Viam service module for Spotify playback control with QR code authentication. 
       "model": "gambit-robotics:service:spotify",
       "attributes": {
         "client_id": "your_spotify_client_id",
-        "auth_port": 8888,
         "token_path": "/home/pi/.spotify_token"
       }
     }
@@ -58,7 +55,8 @@ A Viam service module for Spotify playback control with QR code authentication. 
 
 ## Features
 
-- QR code authentication flow (scan with phone to authenticate)
+- Device authorization flow (works on any network, no redirect URIs)
+- QR code authentication (scan to go to spotify.com/pair)
 - Full playback control (play, pause, skip, seek, volume, shuffle, repeat)
 - Now playing info with album artwork and dominant colors
 - Search (tracks, albums, artists, playlists)
@@ -69,10 +67,10 @@ A Viam service module for Spotify playback control with QR code authentication. 
 ## Authentication Flow
 
 1. Call `get_auth_status` to check if already authenticated
-2. If not, call `get_auth_qr` to get a QR code image
-3. Display QR code on your kiosk screen
-4. User scans QR with phone and completes Spotify login
-5. Poll `get_auth_status` until authenticated
+2. If not, call `get_auth_qr` to get a QR code and user code
+3. Display QR code on your kiosk screen (or show the user code)
+4. User scans QR or visits `spotify.com/pair` and enters the code
+5. Poll `poll_auth` until authenticated
 6. Start using playback commands
 
 ```python
@@ -83,10 +81,19 @@ spotify = Generic.from_robot(robot, "spotify")
 # Check auth status
 status = await spotify.do_command({"command": "get_auth_status"})
 if not status["authenticated"]:
-    # Get QR code for display
+    # Get QR code and user code for display
     auth = await spotify.do_command({"command": "get_auth_qr"})
-    # auth["qr_image"] is base64 PNG
-    # auth["auth_url"] is the URL encoded in QR
+    # auth["qr_image"] is base64 PNG (links to spotify.com/pair)
+    # auth["user_code"] is the code to enter (e.g., "ABCD-1234")
+    # auth["verification_uri"] is "https://spotify.com/pair"
+
+    # Poll until user completes auth
+    while True:
+        result = await spotify.do_command({"command": "poll_auth"})
+        if result["authenticated"]:
+            print(f"Welcome, {result['user']}!")
+            break
+        await asyncio.sleep(5)  # Poll every 5 seconds
 ```
 
 ## API Reference
@@ -97,8 +104,9 @@ All commands are called via `do_command({"command": "...", ...})`.
 
 | Command | Params | Returns |
 |---------|--------|---------|
-| `get_auth_qr` | - | `{qr_image: str, auth_url: str}` |
+| `get_auth_qr` | - | `{qr_image: str, auth_url: str, user_code: str, verification_uri: str, expires_in: int}` |
 | `get_auth_status` | - | `{authenticated: bool, user: str}` |
+| `poll_auth` | - | `{authenticated: bool, pending: bool, user: str, error: str}` |
 | `logout` | - | `{success: bool}` |
 
 ### Playback Control
@@ -204,6 +212,10 @@ results = await spotify.do_command({
     "type": "playlist"
 })
 ```
+
+## Commercial Deployment
+
+For apps with more than 25 users, you'll need to apply for [Spotify Extended Quota Mode](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 ## Local Development
 

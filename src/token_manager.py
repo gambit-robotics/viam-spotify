@@ -1,12 +1,14 @@
+import base64
+import io
 import json
 import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass, asdict
 
+import qrcode
+import requests
 import spotipy
-from spotipy.oauth2 import SpotifyPKCE
-
 
 SCOPES = [
     "user-read-playback-state",
@@ -17,6 +19,9 @@ SCOPES = [
     "user-library-read",
     "user-read-recently-played",
 ]
+
+SPOTIFY_DEVICE_CODE_URL = "https://accounts.spotify.com/api/device/code"
+SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 
 @dataclass
@@ -35,28 +40,59 @@ class TokenInfo:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TokenInfo":
+        # Handle both expires_at and expires_in formats
+        expires_at = data.get("expires_at")
+        if expires_at is None and "expires_in" in data:
+            expires_at = int(time.time()) + data["expires_in"]
         return cls(
             access_token=data["access_token"],
             refresh_token=data["refresh_token"],
             token_type=data["token_type"],
-            expires_at=data["expires_at"],
-            scope=data["scope"],
+            expires_at=expires_at,
+            scope=data.get("scope", ""),
         )
 
 
+@dataclass
+class DeviceAuthInfo:
+    """Holds pending device authorization info."""
+    device_code: str
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: Optional[str]
+    expires_at: float
+    interval: int
+
+    def is_expired(self) -> bool:
+        return time.time() >= self.expires_at
+
+
+def generate_qr_base64(url: str) -> str:
+    """Generate a QR code as base64 PNG."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 class TokenManager:
-    def __init__(
-        self,
-        client_id: str,
-        redirect_uri: str,
-        token_path: str,
-    ):
+    def __init__(self, client_id: str, token_path: str):
         self.client_id = client_id
-        self.redirect_uri = redirect_uri
         self.token_path = Path(token_path)
         self._token_info: Optional[TokenInfo] = None
         self._spotify: Optional[spotipy.Spotify] = None
-        self._pending_oauth: Optional[SpotifyPKCE] = None
+        self._pending_auth: Optional[DeviceAuthInfo] = None
 
         self._load_token()
 
@@ -81,44 +117,135 @@ class TokenManager:
         if self.token_path.exists():
             self.token_path.unlink()
 
-    def _create_oauth(self) -> SpotifyPKCE:
-        return SpotifyPKCE(
-            client_id=self.client_id,
-            redirect_uri=self.redirect_uri,
-            scope=" ".join(SCOPES),
-            open_browser=False,
+    def start_device_auth(self) -> DeviceAuthInfo:
+        """
+        Start the device authorization flow.
+        Returns device auth info with user_code and verification URL.
+        """
+        response = requests.post(
+            SPOTIFY_DEVICE_CODE_URL,
+            data={
+                "client_id": self.client_id,
+                "scope": " ".join(SCOPES),
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        self._pending_auth = DeviceAuthInfo(
+            device_code=data["device_code"],
+            user_code=data["user_code"],
+            verification_uri=data["verification_uri"],
+            verification_uri_complete=data.get("verification_uri_complete"),
+            expires_at=time.time() + data["expires_in"],
+            interval=data.get("interval", 5),
+        )
+        return self._pending_auth
+
+    def get_auth_qr_data(self) -> dict:
+        """
+        Get QR code and auth info for device authorization.
+        Starts a new auth flow if needed.
+        """
+        if self._pending_auth is None or self._pending_auth.is_expired():
+            self.start_device_auth()
+
+        # Use verification_uri_complete if available (includes code in URL)
+        # Otherwise use base verification_uri
+        qr_url = (
+            self._pending_auth.verification_uri_complete
+            or self._pending_auth.verification_uri
         )
 
-    def get_auth_url(self) -> str:
-        self._pending_oauth = self._create_oauth()
-        return self._pending_oauth.get_authorize_url()
+        return {
+            "qr_image": generate_qr_base64(qr_url),
+            "auth_url": qr_url,
+            "user_code": self._pending_auth.user_code,
+            "verification_uri": self._pending_auth.verification_uri,
+            "expires_in": int(self._pending_auth.expires_at - time.time()),
+        }
 
-    def exchange_code(self, code: str) -> bool:
-        if not self._pending_oauth:
-            self._pending_oauth = self._create_oauth()
+    def poll_for_token(self) -> dict:
+        """
+        Poll Spotify to check if user has completed authorization.
+        Returns {"authenticated": True/False, "error": str or None}
+        """
+        if self._pending_auth is None:
+            return {"authenticated": False, "error": "No pending authorization"}
+
+        if self._pending_auth.is_expired():
+            self._pending_auth = None
+            return {"authenticated": False, "error": "Authorization expired"}
 
         try:
-            token_data = self._pending_oauth.get_access_token(code, as_dict=True)
-            self._token_info = TokenInfo.from_dict(token_data)
-            self._save_token()
-            self._spotify = None
-            self._pending_oauth = None
-            return True
-        except Exception:
-            self._pending_oauth = None
-            return False
+            response = requests.post(
+                SPOTIFY_TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "device_code": self._pending_auth.device_code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                # Success - got tokens
+                data = response.json()
+                self._token_info = TokenInfo.from_dict(data)
+                self._save_token()
+                self._spotify = None
+                self._pending_auth = None
+                return {"authenticated": True, "error": None}
+
+            # Handle error responses
+            error_data = response.json()
+            error = error_data.get("error", "unknown_error")
+
+            if error == "authorization_pending":
+                # User hasn't completed auth yet - this is normal
+                return {"authenticated": False, "error": None, "pending": True}
+            elif error == "slow_down":
+                # We're polling too fast
+                return {"authenticated": False, "error": None, "pending": True}
+            elif error == "expired_token":
+                self._pending_auth = None
+                return {"authenticated": False, "error": "Authorization expired"}
+            elif error == "access_denied":
+                self._pending_auth = None
+                return {"authenticated": False, "error": "User denied access"}
+            else:
+                return {"authenticated": False, "error": error}
+
+        except requests.RequestException as e:
+            return {"authenticated": False, "error": str(e)}
 
     def refresh_if_needed(self) -> bool:
         if not self._token_info:
             return False
 
         if self._token_info.is_expired():
-            oauth = self._create_oauth()
             try:
-                token_data = oauth.refresh_access_token(
-                    self._token_info.refresh_token
+                response = requests.post(
+                    SPOTIFY_TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "grant_type": "refresh_token",
+                        "refresh_token": self._token_info.refresh_token,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=10,
                 )
-                self._token_info = TokenInfo.from_dict(token_data)
+                response.raise_for_status()
+                data = response.json()
+
+                # Refresh response may not include refresh_token, keep the old one
+                if "refresh_token" not in data:
+                    data["refresh_token"] = self._token_info.refresh_token
+
+                self._token_info = TokenInfo.from_dict(data)
                 self._save_token()
                 self._spotify = None
                 return True
@@ -152,3 +279,4 @@ class TokenManager:
 
     def logout(self) -> None:
         self._clear_token()
+        self._pending_auth = None

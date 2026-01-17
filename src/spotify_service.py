@@ -15,7 +15,6 @@ from viam.resource.registry import Registry, ResourceCreatorRegistration
 from viam.resource.types import Model, ModelFamily
 from viam.services.generic import Generic
 
-from .auth_server import AuthServer
 from .token_manager import TokenManager
 
 LOGGER = getLogger(__name__)
@@ -39,7 +38,6 @@ class SpotifyService(Generic, Reconfigurable):
     )
 
     _token_manager: Optional[TokenManager] = None
-    _auth_server: Optional[AuthServer] = None
     _color_cache: Optional[dict[str, list[str]]] = None
 
     @classmethod
@@ -64,41 +62,23 @@ class SpotifyService(Generic, Reconfigurable):
         config: ComponentConfig,
         dependencies: Mapping[ResourceName, ResourceBase],
     ) -> None:
-        old_server = self._auth_server
-
         attrs = config.attributes.fields
         client_id = attrs["client_id"].string_value
-        auth_port = int(attrs.get("auth_port", {}).number_value or 8888)
         token_path = (
             attrs.get("token_path", {}).string_value
             or "/tmp/.spotify_token"
         )
 
-        redirect_uri = f"http://{{ip}}:{auth_port}/callback"
-
         self._token_manager = TokenManager(
             client_id=client_id,
-            redirect_uri=redirect_uri,
             token_path=token_path,
         )
-        self._auth_server = AuthServer(self._token_manager, port=auth_port)
-
-        self._token_manager.redirect_uri = self._auth_server.callback_url
         self._color_cache = {}
 
-        async def start_server():
-            try:
-                if old_server:
-                    await old_server.stop()
-                await self._auth_server.start()
-            except Exception as e:
-                LOGGER.error(f"Failed to start auth server: {e}")
-
-        asyncio.create_task(start_server())
+        LOGGER.info(f"Spotify service configured with client_id={client_id[:8]}...")
 
     async def close(self) -> None:
-        if self._auth_server:
-            await self._auth_server.stop()
+        pass
 
     async def do_command(
         self,
@@ -112,6 +92,7 @@ class SpotifyService(Generic, Reconfigurable):
         handlers = {
             "get_auth_qr": self._cmd_get_auth_qr,
             "get_auth_status": self._cmd_get_auth_status,
+            "poll_auth": self._cmd_poll_auth,
             "logout": self._cmd_logout,
             "play": self._cmd_play,
             "pause": self._cmd_pause,
@@ -140,12 +121,53 @@ class SpotifyService(Generic, Reconfigurable):
         return {"error": f"Unknown command: {cmd}"}
 
     async def _cmd_get_auth_qr(self, cmd: Mapping[str, Any]) -> dict:
-        return self._auth_server.get_qr_data()
+        """
+        Get QR code and user code for device authorization.
+        Returns:
+            - qr_image: base64 PNG of QR code
+            - auth_url: URL encoded in QR (spotify.com/pair or with code)
+            - user_code: code user enters at spotify.com/pair
+            - verification_uri: spotify.com/pair
+            - expires_in: seconds until this auth request expires
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None, self._token_manager.get_auth_qr_data
+            )
+        except Exception as e:
+            LOGGER.error(f"Failed to get auth QR: {e}")
+            return {"error": str(e)}
 
     async def _cmd_get_auth_status(self, cmd: Mapping[str, Any]) -> dict:
+        """Check if already authenticated."""
         authenticated = self._token_manager.is_authenticated()
         user = self._token_manager.get_current_user() if authenticated else None
         return {"authenticated": authenticated, "user": user}
+
+    async def _cmd_poll_auth(self, cmd: Mapping[str, Any]) -> dict:
+        """
+        Poll to check if user completed device authorization.
+        Call this periodically after showing QR code.
+        Returns:
+            - authenticated: True if auth completed
+            - pending: True if still waiting for user
+            - error: error message if failed
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._token_manager.poll_for_token
+            )
+
+            if result.get("authenticated"):
+                user = self._token_manager.get_current_user()
+                result["user"] = user
+
+            return result
+        except Exception as e:
+            LOGGER.error(f"Poll auth failed: {e}")
+            return {"authenticated": False, "error": str(e)}
 
     async def _cmd_logout(self, cmd: Mapping[str, Any]) -> dict:
         self._token_manager.logout()
@@ -165,13 +187,20 @@ class SpotifyService(Generic, Reconfigurable):
         device_id = cmd.get("device_id")
 
         try:
+            loop = asyncio.get_running_loop()
             if uri:
                 if uri.startswith("spotify:track:"):
-                    sp.start_playback(device_id=device_id, uris=[uri])
+                    await loop.run_in_executor(
+                        None, lambda: sp.start_playback(device_id=device_id, uris=[uri])
+                    )
                 else:
-                    sp.start_playback(device_id=device_id, context_uri=uri)
+                    await loop.run_in_executor(
+                        None, lambda: sp.start_playback(device_id=device_id, context_uri=uri)
+                    )
             else:
-                sp.start_playback(device_id=device_id)
+                await loop.run_in_executor(
+                    None, lambda: sp.start_playback(device_id=device_id)
+                )
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Play failed: {e}")
@@ -182,7 +211,8 @@ class SpotifyService(Generic, Reconfigurable):
         if err:
             return err
         try:
-            sp.pause_playback()
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, sp.pause_playback)
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Pause failed: {e}")
@@ -193,7 +223,8 @@ class SpotifyService(Generic, Reconfigurable):
         if err:
             return err
         try:
-            sp.next_track()
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, sp.next_track)
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Next track failed: {e}")
@@ -204,7 +235,8 @@ class SpotifyService(Generic, Reconfigurable):
         if err:
             return err
         try:
-            sp.previous_track()
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, sp.previous_track)
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Previous track failed: {e}")
@@ -216,7 +248,8 @@ class SpotifyService(Generic, Reconfigurable):
             return err
         position_ms = cmd.get("position_ms", 0)
         try:
-            sp.seek_track(position_ms)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.seek_track(position_ms))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Seek failed: {e}")
@@ -229,7 +262,8 @@ class SpotifyService(Generic, Reconfigurable):
         volume = cmd.get("volume", 50)
         volume = max(0, min(100, volume))
         try:
-            sp.volume(volume)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.volume(volume))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Set volume failed: {e}")
@@ -241,7 +275,8 @@ class SpotifyService(Generic, Reconfigurable):
             return err
         state = cmd.get("state", True)
         try:
-            sp.shuffle(state)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.shuffle(state))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Shuffle failed: {e}")
@@ -255,7 +290,8 @@ class SpotifyService(Generic, Reconfigurable):
         if state not in ("track", "context", "off"):
             return {"success": False, "error": "Invalid repeat state"}
         try:
-            sp.repeat(state)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.repeat(state))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Repeat failed: {e}")
@@ -269,7 +305,8 @@ class SpotifyService(Generic, Reconfigurable):
         if not uri:
             return {"success": False, "error": "uri is required"}
         try:
-            sp.add_to_queue(uri)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.add_to_queue(uri))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Add to queue failed: {e}")
@@ -336,7 +373,8 @@ class SpotifyService(Generic, Reconfigurable):
         if err:
             return err
         try:
-            queue_data = sp.queue()
+            loop = asyncio.get_running_loop()
+            queue_data = await loop.run_in_executor(None, sp.queue)
             queue = []
             for item in queue_data.get("queue", [])[:20]:
                 artwork_url = None
@@ -367,7 +405,10 @@ class SpotifyService(Generic, Reconfigurable):
         limit = cmd.get("limit", 10)
 
         try:
-            results = sp.search(q=query, type=search_type, limit=limit)
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None, lambda: sp.search(q=query, type=search_type, limit=limit)
+            )
 
             formatted = []
             type_key = f"{search_type}s"
@@ -426,7 +467,10 @@ class SpotifyService(Generic, Reconfigurable):
         limit = cmd.get("limit", 20)
 
         try:
-            playlists_data = sp.current_user_playlists(limit=limit)
+            loop = asyncio.get_running_loop()
+            playlists_data = await loop.run_in_executor(
+                None, lambda: sp.current_user_playlists(limit=limit)
+            )
             playlists = []
             for item in playlists_data.get("items", []):
                 image_url = None
@@ -451,7 +495,10 @@ class SpotifyService(Generic, Reconfigurable):
             return {"error": "playlist_id is required"}
 
         try:
-            tracks_data = sp.playlist_tracks(playlist_id, limit=50)
+            loop = asyncio.get_running_loop()
+            tracks_data = await loop.run_in_executor(
+                None, lambda: sp.playlist_tracks(playlist_id, limit=50)
+            )
             tracks = []
             for item in tracks_data.get("items", []):
                 track = item.get("track")
@@ -473,7 +520,10 @@ class SpotifyService(Generic, Reconfigurable):
         limit = cmd.get("limit", 20)
 
         try:
-            tracks_data = sp.current_user_saved_tracks(limit=limit)
+            loop = asyncio.get_running_loop()
+            tracks_data = await loop.run_in_executor(
+                None, lambda: sp.current_user_saved_tracks(limit=limit)
+            )
             tracks = []
             for item in tracks_data.get("items", []):
                 track = item.get("track")
@@ -499,7 +549,10 @@ class SpotifyService(Generic, Reconfigurable):
         limit = cmd.get("limit", 20)
 
         try:
-            tracks_data = sp.current_user_recently_played(limit=limit)
+            loop = asyncio.get_running_loop()
+            tracks_data = await loop.run_in_executor(
+                None, lambda: sp.current_user_recently_played(limit=limit)
+            )
             tracks = []
             for item in tracks_data.get("items", []):
                 track = item.get("track")
@@ -523,7 +576,8 @@ class SpotifyService(Generic, Reconfigurable):
         if err:
             return err
         try:
-            devices_data = sp.devices()
+            loop = asyncio.get_running_loop()
+            devices_data = await loop.run_in_executor(None, sp.devices)
             devices = []
             for device in devices_data.get("devices", []):
                 devices.append({
@@ -546,7 +600,8 @@ class SpotifyService(Generic, Reconfigurable):
             return {"success": False, "error": "device_id is required"}
 
         try:
-            sp.transfer_playback(device_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: sp.transfer_playback(device_id))
             return {"success": True}
         except Exception as e:
             LOGGER.warning(f"Transfer playback failed: {e}")

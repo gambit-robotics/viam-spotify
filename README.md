@@ -1,5 +1,7 @@
 # Spotify Module for Viam
 
+IMPORTANT - This module is currently completely untested as Spotify have disabled their developer integrations dashboard temporarily
+
 A Viam service module for Spotify playback control with device authorization. Designed for kiosk displays, IoT devices, and commercial deployments.
 
 ## Model

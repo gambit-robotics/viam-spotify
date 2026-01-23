@@ -132,13 +132,15 @@ class LibrespotManager:
         self._write_config()
 
         try:
-            # Use DEVNULL to avoid stdout buffer deadlock
+            # Capture stderr to see errors, stdout to DEVNULL
             self._process = subprocess.Popen(
-                [self.binary_path, "-config_path", str(self.config_path)],
+                [self.binary_path, "--config_dir", str(self.config_dir)],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
             )
             LOGGER.info(f"Started go-librespot (PID: {self._process.pid})")
+            LOGGER.debug(f"Config dir: {self.config_dir}")
             return True
         except Exception as e:
             LOGGER.error(f"Failed to start go-librespot: {e}")
@@ -169,7 +171,17 @@ class LibrespotManager:
             if self._process is not None:
                 return_code = self._process.poll()
                 if return_code is not None:
+                    # Capture stderr before losing the process
+                    stderr_output = ""
+                    if self._process.stderr:
+                        try:
+                            stderr_output = self._process.stderr.read()
+                        except Exception:
+                            pass
+
                     LOGGER.warning(f"go-librespot exited with code {return_code}")
+                    if stderr_output:
+                        LOGGER.error(f"go-librespot stderr: {stderr_output}")
                     self._process = None
 
                     if self._should_run and self._restart_count < self._max_restarts:

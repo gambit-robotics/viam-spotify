@@ -62,11 +62,11 @@ class SpotifyService(Generic, Reconfigurable):
         return service
 
     @classmethod
-    def validate_config(cls, config: ComponentConfig) -> Sequence[str]:
+    def validate_config(cls, config: ComponentConfig) -> tuple[Sequence[str], Sequence[str]]:
         attrs = config.attributes.fields
         if "device_name" not in attrs:
             raise ValueError("device_name is required")
-        return []
+        return [], []  # (required_deps, optional_deps)
 
     def reconfigure(
         self,
@@ -85,11 +85,11 @@ class SpotifyService(Generic, Reconfigurable):
         device_name = attrs["device_name"].string_value
 
         # Optional config with defaults
-        api_port = int(attrs.get("api_port", {}).number_value or 3678)
-        audio_backend = attrs.get("audio_backend", {}).string_value or "pulseaudio"
-        audio_device = attrs.get("audio_device", {}).string_value or "default"
-        bitrate = int(attrs.get("bitrate", {}).number_value or 320)
-        initial_volume = int(attrs.get("initial_volume", {}).number_value or 50)
+        api_port = int(attrs["api_port"].number_value) if "api_port" in attrs else 3678
+        audio_backend = attrs["audio_backend"].string_value if "audio_backend" in attrs else "pulseaudio"
+        audio_device = attrs["audio_device"].string_value if "audio_device" in attrs else "default"
+        bitrate = int(attrs["bitrate"].number_value) if "bitrate" in attrs else 320
+        initial_volume = int(attrs["initial_volume"].number_value) if "initial_volume" in attrs else 50
 
         # Create manager and client
         self._manager = LibrespotManager(

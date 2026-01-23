@@ -32,6 +32,9 @@ class TrackMetadata:
     shuffle: bool = False
     repeat_context: bool = False
     repeat_track: bool = False
+    release_date: str = ""
+    track_number: int = 0
+    disc_number: int = 0
 
 
 @dataclass
@@ -41,6 +44,11 @@ class PlayerStatus:
     track: TrackMetadata = field(default_factory=TrackMetadata)
     device_id: str = ""
     device_name: str = ""
+    username: str = ""
+    device_type: str = ""
+    play_origin: str = ""
+    buffering: bool = False
+    volume_steps: int = 64
 
 
 class LibrespotClient:
@@ -116,28 +124,37 @@ class LibrespotClient:
         """Parse status response into PlayerStatus object."""
         status = PlayerStatus()
 
-        # Check if there's an active session
+        # Device/session info
         status.active = data.get("stopped", True) is False
         status.device_id = data.get("device_id", "")
         status.device_name = data.get("device_name", "")
+        status.username = data.get("username", "")
+        status.device_type = data.get("device_type", "")
+        status.play_origin = data.get("play_origin", "")
+        status.buffering = data.get("buffering", False)
+        status.volume_steps = data.get("volume_steps", 64)
 
-        # Parse track metadata
+        # Parse track metadata (go-librespot field names)
         track = data.get("track", {})
         if track:
             status.track = TrackMetadata(
                 uri=track.get("uri", ""),
                 name=track.get("name", ""),
-                artist=self._format_artists(track.get("artist", [])),
-                album=track.get("album", {}).get("name", ""),
-                artwork_url=self._get_best_image(track.get("album", {}).get("images", [])),
+                artist=self._format_artists(track.get("artist_names", [])),
+                album=track.get("album_name", ""),
+                artwork_url=track.get("album_cover_url", ""),
                 duration_ms=track.get("duration", 0),
+                release_date=self._parse_release_date(track.get("release_date", "")),
+                track_number=track.get("track_number", 0),
+                disc_number=track.get("disc_number", 0),
             )
+            # Position is inside track object
+            status.track.progress_ms = track.get("position", 0)
 
-        # Player state
+        # Player state (from top-level response)
         status.track.is_playing = data.get("paused", True) is False
-        status.track.progress_ms = data.get("position", 0)
         status.track.volume = data.get("volume", 50)
-        status.track.shuffle = data.get("shuffle", False)
+        status.track.shuffle = data.get("shuffle_context", False)
         status.track.repeat_context = data.get("repeat_context", False)
         status.track.repeat_track = data.get("repeat_track", False)
 
@@ -146,6 +163,29 @@ class LibrespotClient:
             self._last_status_time = time.time()
 
         return status
+
+    def _parse_release_date(self, date_str: str) -> str:
+        """Parse go-librespot date format to ISO format.
+
+        Input: "year:2010 month:4 day:12"
+        Output: "2010-04-12"
+        """
+        if not date_str:
+            return ""
+        try:
+            parts = {}
+            for part in date_str.split():
+                if ":" in part:
+                    key, value = part.split(":", 1)
+                    parts[key] = int(value)
+            year = parts.get("year", 0)
+            month = parts.get("month", 1)
+            day = parts.get("day", 1)
+            if year:
+                return f"{year:04d}-{month:02d}-{day:02d}"
+        except (ValueError, AttributeError):
+            pass
+        return date_str  # Return original if parsing fails
 
     def _format_artists(self, artists: list) -> str:
         """Format artist list into comma-separated string."""

@@ -99,18 +99,26 @@ All commands are called via `do_command({"command": "...", ...})`.
   "active": true,
   "device_id": "abc123",
   "device_name": "Kitchen Chef",
+  "username": "spotify_user_id",
+  "device_type": "SPEAKER",
+  "play_origin": "playlist",
+  "buffering": false,
+  "volume_steps": 64,
   "is_playing": true,
-  "name": "Track Name",
-  "artist": "Artist Name",
-  "album": "Album Name",
-  "artwork_url": "https://i.scdn.co/image/...",
-  "progress_ms": 45000,
-  "duration_ms": 210000,
   "volume": 75,
   "shuffle": false,
   "repeat_track": false,
   "repeat_context": false,
-  "uri": "spotify:track:xxx"
+  "progress_ms": 45000,
+  "duration_ms": 210000,
+  "uri": "spotify:track:xxx",
+  "name": "Track Name",
+  "artist": "Artist Name",
+  "album": "Album Name",
+  "artwork_url": "https://i.scdn.co/image/...",
+  "release_date": "2023-05-12",
+  "track_number": 3,
+  "disc_number": 1
 }
 ```
 
@@ -118,6 +126,7 @@ All commands are called via `do_command({"command": "...", ...})`.
 ```json
 {
   "is_playing": true,
+  "buffering": false,
   "name": "Track Name",
   "artist": "Artist Name",
   "album": "Album Name",
@@ -125,7 +134,10 @@ All commands are called via `do_command({"command": "...", ...})`.
   "colors": ["#1a1a2e", "#e94560", "#0f3460"],
   "progress_ms": 45000,
   "duration_ms": 210000,
-  "uri": "spotify:track:xxx"
+  "uri": "spotify:track:xxx",
+  "release_date": "2023-05-12",
+  "track_number": 3,
+  "disc_number": 1
 }
 ```
 

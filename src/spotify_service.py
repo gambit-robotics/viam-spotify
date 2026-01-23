@@ -176,21 +176,32 @@ class SpotifyService(Generic, Reconfigurable):
             return {"error": "Failed to get status from go-librespot"}
 
         return {
+            # Device/session info
             "active": status.active,
             "device_id": status.device_id,
             "device_name": status.device_name,
+            "username": status.username or None,
+            "device_type": status.device_type or None,
+            "play_origin": status.play_origin or None,
+            "buffering": status.buffering,
+            "volume_steps": status.volume_steps,
+            # Playback state
             "is_playing": status.track.is_playing,
-            "name": status.track.name or None,
-            "artist": status.track.artist or None,
-            "album": status.track.album or None,
-            "artwork_url": status.track.artwork_url or None,
-            "progress_ms": status.track.progress_ms,
-            "duration_ms": status.track.duration_ms,
             "volume": status.track.volume,
             "shuffle": status.track.shuffle,
             "repeat_track": status.track.repeat_track,
             "repeat_context": status.track.repeat_context,
+            "progress_ms": status.track.progress_ms,
+            "duration_ms": status.track.duration_ms,
+            # Track metadata
             "uri": status.track.uri or None,
+            "name": status.track.name or None,
+            "artist": status.track.artist or None,
+            "album": status.track.album or None,
+            "artwork_url": status.track.artwork_url or None,
+            "release_date": status.track.release_date or None,
+            "track_number": status.track.track_number,
+            "disc_number": status.track.disc_number,
         }
 
     async def _get_colors_cached(self, artwork_url: str) -> list[str]:
@@ -220,6 +231,7 @@ class SpotifyService(Generic, Reconfigurable):
         if status is None:
             return {
                 "is_playing": False,
+                "buffering": False,
                 "name": None,
                 "artist": None,
                 "album": None,
@@ -228,6 +240,9 @@ class SpotifyService(Generic, Reconfigurable):
                 "progress_ms": 0,
                 "duration_ms": 0,
                 "uri": None,
+                "release_date": None,
+                "track_number": None,
+                "disc_number": None,
             }
 
         artwork_url = status.track.artwork_url
@@ -235,6 +250,7 @@ class SpotifyService(Generic, Reconfigurable):
 
         return {
             "is_playing": status.track.is_playing,
+            "buffering": status.buffering,
             "name": status.track.name or None,
             "artist": status.track.artist or None,
             "album": status.track.album or None,
@@ -243,6 +259,9 @@ class SpotifyService(Generic, Reconfigurable):
             "progress_ms": status.track.progress_ms,
             "duration_ms": status.track.duration_ms,
             "uri": status.track.uri or None,
+            "release_date": status.track.release_date or None,
+            "track_number": status.track.track_number,
+            "disc_number": status.track.disc_number,
         }
 
     async def _cmd_play(self, cmd: Mapping[str, Any]) -> dict:

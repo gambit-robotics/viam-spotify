@@ -48,9 +48,12 @@ install_librespot() {
 
     local archive_name=$(get_archive_name)
     if [ -z "$archive_name" ]; then
+        echo ""
         echo "Warning: go-librespot pre-built binaries only available for Linux."
         echo "For macOS, build from source: https://github.com/devgianlu/go-librespot"
-        return 1
+        echo "The module will start but playback won't work without go-librespot."
+        echo ""
+        return 0  # Don't fail - let Python module handle the error gracefully
     fi
 
     local download_url="https://github.com/devgianlu/go-librespot/releases/download/${LIBRESPOT_VERSION}/${archive_name}"

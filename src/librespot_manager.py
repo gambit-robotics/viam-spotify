@@ -117,7 +117,10 @@ class LibrespotManager:
         binary = Path(self.binary_path)
         if not binary.exists():
             LOGGER.error(f"go-librespot binary not found at {self.binary_path}")
-            LOGGER.error("Run setup.sh to install go-librespot")
+            LOGGER.error(
+                "Pre-built binaries are only available for Linux. "
+                "For macOS, build from source: https://github.com/devgianlu/go-librespot"
+            )
             return False
         if not os.access(self.binary_path, os.X_OK):
             LOGGER.error(f"go-librespot binary at {self.binary_path} is not executable")

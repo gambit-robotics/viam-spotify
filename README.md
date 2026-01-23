@@ -249,10 +249,9 @@ cd viam-spotify
 ## Known Limitations
 
 - **Spotify Premium required** - Free accounts don't support Spotify Connect
-- **No search/browse** - Users search on their phone and cast to the device
-- **No playlist management** - Read-only access to what's playing
+- **No search/browse/library access** - This module uses the Spotify Connect protocol (go-librespot), not the Spotify Web API. You can control playback (play, pause, skip, volume, etc.) and play any URI if you know it, but you cannot search for tracks or access user playlists. Users search on their phone and cast to the device - same model as Sonos or Chromecast.
 - **Protocol changes** - Spotify can break librespot (rare, usually fixed quickly)
-- **One instance per device** - Credentials are stored per-user, so only one Spotify module per machine
+- **Linux only** - go-librespot pre-built binaries are only available for Linux. The module will start on macOS but playback won't work without building go-librespot from source.
 
 ## License
 

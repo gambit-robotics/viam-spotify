@@ -1,33 +1,47 @@
-# Spotify Module for Viam
+# Spotify Connect Module for Viam
 
-IMPORTANT - This module is currently completely untested as Spotify have disabled their developer integrations dashboard temporarily
+A Viam service module that turns your device into a **Spotify Connect speaker**. Users connect from their Spotify app - no OAuth, no developer app required.
 
-A Viam service module for Spotify playback control with device authorization. Designed for kiosk displays, IoT devices, and commercial deployments.
+## How It Works
+
+```
+┌─────────────────────┐     HTTP/WS      ┌──────────────────┐
+│  Viam SpotifyService│<────────────────>│   go-librespot   │
+│  (Python)           │                  │   (subprocess)   │
+└─────────────────────┘                  └──────────────────┘
+                                                  │
+                                                  │ Spotify Connect
+                                                  v
+                                         ┌──────────────────┐
+                                         │  User's Phone    │
+                                         │  (Spotify App)   │
+                                         └──────────────────┘
+```
+
+The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a subprocess, which implements the Spotify Connect protocol. Your device appears as a speaker in the Spotify app, just like a Sonos or Chromecast.
 
 ## Model
 
-`gambit-robotics:service:spotify` - Spotify playback control service
+`gambit-robotics:service:spotify` - Spotify Connect playback control service
 
 ### Requirements
 
-- Spotify Premium account (required for playback control)
-- Spotify Developer App (client ID only)
+- Spotify Premium account (required for Spotify Connect)
+- Audio output device (speakers, DAC, etc.)
+- PulseAudio (default on Raspberry Pi OS) - allows coexistence with other audio modules like [viam-labs/speech](https://github.com/viam-labs/speech)
 
-### Spotify Developer Setup
+**No Spotify Developer App needed!**
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. Check the Web API checkbox
-4. Copy your **Client ID**
-
-> **Note:** This module uses [Device Authorization Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-flow) - no redirect URIs needed. Users authenticate by visiting spotify.com/pair and entering a code. This works on any device, any network, without configuration.
-
-### Attributes
+## Configuration
 
 | Attribute | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `client_id` | string | **Yes** | - | Spotify app client ID |
-| `token_path` | string | No | `/tmp/.spotify_token` | Path to store auth tokens |
+| `device_name` | string | **Yes** | - | Name shown in Spotify app (e.g., "Kitchen Speaker") |
+| `api_port` | int | No | `3678` | Port for go-librespot API |
+| `audio_backend` | string | No | `pulseaudio` | Audio backend: `pulseaudio` (recommended) or `alsa` |
+| `audio_device` | string | No | `default` | Audio device/sink name |
+| `bitrate` | int | No | `320` | Audio bitrate (96, 160, or 320 kbps) |
+| `initial_volume` | int | No | `50` | Initial volume (0-100) |
 
 ### Example Configuration
 
@@ -47,90 +61,58 @@ A Viam service module for Spotify playback control with device authorization. De
       "type": "generic",
       "model": "gambit-robotics:service:spotify",
       "attributes": {
-        "client_id": "your_spotify_client_id",
-        "token_path": "/home/pi/.spotify_token"
+        "device_name": "Kitchen Chef",
+        "audio_device": "default",
+        "bitrate": 320,
+        "initial_volume": 50
       }
     }
   ]
 }
 ```
 
-## Features
+## User Flow
 
-- Device authorization flow (works on any network, no redirect URIs)
-- QR code authentication (scan to go to spotify.com/pair)
-- Full playback control (play, pause, skip, seek, volume, shuffle, repeat)
-- Now playing info with album artwork and dominant colors
-- Search (tracks, albums, artists, playlists)
-- Library access (playlists, saved tracks, recently played)
-- Device management and playback transfer
-- Token persistence (survives restarts)
+1. **Module starts** - go-librespot subprocess launches
+2. **Device advertises** - Appears on local network via Zeroconf/mDNS
+3. **User opens Spotify** - On phone, tablet, or desktop
+4. **User taps device** - In "Devices Available" list
+5. **First connection** - Credentials stored for future sessions
+6. **Music plays** - Through your device's speakers
 
-## Authentication Flow
-
-1. Call `get_auth_status` to check if already authenticated
-2. If not, call `get_auth_qr` to get a QR code and user code
-3. Display QR code on your kiosk screen (or show the user code)
-4. User scans QR or visits `spotify.com/pair` and enters the code
-5. Poll `poll_auth` until authenticated
-6. Start using playback commands
-
-```python
-from viam.services.generic import Generic
-
-spotify = Generic.from_robot(robot, "spotify")
-
-# Check auth status
-status = await spotify.do_command({"command": "get_auth_status"})
-if not status["authenticated"]:
-    # Get QR code and user code for display
-    auth = await spotify.do_command({"command": "get_auth_qr"})
-    # auth["qr_image"] is base64 PNG (links to spotify.com/pair)
-    # auth["user_code"] is the code to enter (e.g., "ABCD-1234")
-    # auth["verification_uri"] is "https://spotify.com/pair"
-
-    # Poll until user completes auth
-    while True:
-        result = await spotify.do_command({"command": "poll_auth"})
-        if result["authenticated"]:
-            print(f"Welcome, {result['user']}!")
-            break
-        await asyncio.sleep(5)  # Poll every 5 seconds
-```
+No QR codes, no OAuth, no developer dashboard. Just connect and play.
 
 ## API Reference
 
 All commands are called via `do_command({"command": "...", ...})`.
 
-### Authentication
+### Status
 
 | Command | Params | Returns |
 |---------|--------|---------|
-| `get_auth_qr` | - | `{qr_image: str, auth_url: str, user_code: str, verification_uri: str, expires_in: int}` |
-| `get_auth_status` | - | `{authenticated: bool, user: str}` |
-| `poll_auth` | - | `{authenticated: bool, pending: bool, user: str, error: str}` |
-| `logout` | - | `{success: bool}` |
+| `get_status` | - | Full player state (see below) |
+| `get_current_track` | - | Track info with album art colors |
 
-### Playback Control
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `play` | `uri?`, `device_id?` | `{success: bool}` |
-| `pause` | - | `{success: bool}` |
-| `next` | - | `{success: bool}` |
-| `previous` | - | `{success: bool}` |
-| `seek` | `position_ms: int` | `{success: bool}` |
-| `set_volume` | `volume: int (0-100)` | `{success: bool}` |
-| `shuffle` | `state: bool` | `{success: bool}` |
-| `repeat` | `state: "track"/"context"/"off"` | `{success: bool}` |
-| `add_to_queue` | `uri: str` | `{success: bool}` |
-
-### Now Playing
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `get_current_track` | - | See below |
-| `get_queue` | - | `{queue: [{name, artist, artwork_url, uri}, ...]}` |
+**`get_status` response:**
+```json
+{
+  "active": true,
+  "device_id": "abc123",
+  "device_name": "Kitchen Chef",
+  "is_playing": true,
+  "name": "Track Name",
+  "artist": "Artist Name",
+  "album": "Album Name",
+  "artwork_url": "https://i.scdn.co/image/...",
+  "progress_ms": 45000,
+  "duration_ms": 210000,
+  "volume": 75,
+  "shuffle": false,
+  "repeat_track": false,
+  "repeat_context": false,
+  "uri": "spotify:track:xxx"
+}
+```
 
 **`get_current_track` response:**
 ```json
@@ -147,77 +129,86 @@ All commands are called via `do_command({"command": "...", ...})`.
 }
 ```
 
-### Search
+### Playback Control
 
 | Command | Params | Returns |
 |---------|--------|---------|
-| `search` | `query: str`, `type?: str`, `limit?: int` | `{results: [...]}` |
+| `play` | `uri?` | `{success: bool}` |
+| `pause` | - | `{success: bool}` |
+| `toggle_playback` | - | `{success: bool}` |
+| `next` | - | `{success: bool}` |
+| `previous` | - | `{success: bool}` |
+| `seek` | `position_ms: int` | `{success: bool}` |
+| `set_volume` | `volume: int (0-100)` | `{success: bool}` |
+| `shuffle` | `state: bool` | `{success: bool}` |
+| `repeat` | `state: "track"/"context"/"off"` | `{success: bool}` |
+| `add_to_queue` | `uri: str` | `{success: bool}` |
+| `play_uri` | `uri: str`, `skip_to_uri?: str` | `{success: bool}` |
 
-Search types: `track` (default), `album`, `artist`, `playlist`
-
-### Library
+### Queue
 
 | Command | Params | Returns |
 |---------|--------|---------|
-| `get_playlists` | `limit?: int` | `{playlists: [{id, name, image_url}, ...]}` |
-| `get_playlist_tracks` | `playlist_id: str` | `{tracks: [{name, artist, uri}, ...]}` |
-| `get_saved_tracks` | `limit?: int` | `{tracks: [...]}` |
-| `get_recently_played` | `limit?: int` | `{tracks: [...]}` |
-
-### Devices
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `get_devices` | - | `{devices: [{id, name, type, is_active}, ...]}` |
-| `transfer_playback` | `device_id: str` | `{success: bool}` |
+| `get_queue` | - | `{queue: [{name, artist, uri}, ...]}` |
 
 ## Usage Examples
 
-### Play a playlist
+### Basic playback control
+
 ```python
+from viam.services.generic import Generic
+
+spotify = Generic.from_robot(robot, "spotify")
+
+# Get current track
+track = await spotify.do_command({"command": "get_current_track"})
+print(f"Now playing: {track['name']} by {track['artist']}")
+
+# Pause/resume
+await spotify.do_command({"command": "pause"})
+await spotify.do_command({"command": "play"})
+
+# Skip tracks
+await spotify.do_command({"command": "next"})
+await spotify.do_command({"command": "previous"})
+
+# Volume control
+await spotify.do_command({"command": "set_volume", "volume": 75})
+```
+
+### Play a specific album or playlist
+
+```python
+# Play an album
 await spotify.do_command({
-    "command": "play",
+    "command": "play_uri",
+    "uri": "spotify:album:4aawyAB9vmqN3uQ7FjRGTy"
+})
+
+# Play a playlist
+await spotify.do_command({
+    "command": "play_uri",
     "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
 })
 ```
 
-### Get current track for display
+### Kiosk display with dynamic colors
+
 ```python
-track = await spotify.do_command({"command": "get_current_track"})
-print(f"Now playing: {track['name']} by {track['artist']}")
-print(f"Album art: {track['artwork_url']}")
-print(f"Colors for UI: {track['colors']}")
+import asyncio
+
+async def display_loop():
+    while True:
+        track = await spotify.do_command({"command": "get_current_track"})
+
+        if track.get("is_playing"):
+            print(f"Now playing: {track['name']}")
+            print(f"By: {track['artist']}")
+            print(f"Album: {track['album']}")
+            print(f"UI Colors: {track['colors']}")  # For dynamic theming
+
+        await asyncio.sleep(1)
 ```
-
-### Search and play
-```python
-results = await spotify.do_command({
-    "command": "search",
-    "query": "bohemian rhapsody",
-    "type": "track",
-    "limit": 5
-})
-if results["results"]:
-    await spotify.do_command({
-        "command": "play",
-        "uri": results["results"][0]["uri"]
-    })
-```
-
-### Voice control integration
-```python
-# Works great with speech-to-text
-spoken_query = "play some jazz music"
-results = await spotify.do_command({
-    "command": "search",
-    "query": spoken_query,
-    "type": "playlist"
-})
-```
-
-## Commercial Deployment
-
-For apps with more than 25 users, you'll need to apply for [Spotify Extended Quota Mode](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 ## Local Development
 
@@ -226,12 +217,42 @@ For apps with more than 25 users, you'll need to apply for [Spotify Extended Quo
 git clone https://github.com/gambit-robotics/viam-spotify.git
 cd viam-spotify
 
-# Install dependencies
-pip install -r requirements.txt
+# Run setup (downloads go-librespot, installs deps)
+./setup.sh
 
 # Run locally
 ./exec.sh
 ```
+
+## Troubleshooting
+
+### Device doesn't appear in Spotify app
+
+1. Check that go-librespot is running: `ps aux | grep go-librespot`
+2. Verify Zeroconf/mDNS is working: `avahi-browse -a` (Linux)
+3. Ensure device and phone are on the same network
+
+### No audio
+
+1. Check PulseAudio is running: `pulseaudio --check && echo "running"`
+2. List available sinks: `pactl list sinks short`
+3. Test audio: `paplay /usr/share/sounds/alsa/Front_Center.wav`
+
+**Note:** Raspberry Pi OS Lite doesn't include PulseAudio. Set `audio_backend: alsa` in config.
+
+### Connection drops
+
+- Credentials are stored in `~/.config/go-librespot/`
+- Delete `~/.config/go-librespot/state.json` to force re-authentication
+- Check network stability
+
+## Known Limitations
+
+- **Spotify Premium required** - Free accounts don't support Spotify Connect
+- **No search/browse** - Users search on their phone and cast to the device
+- **No playlist management** - Read-only access to what's playing
+- **Protocol changes** - Spotify can break librespot (rare, usually fixed quickly)
+- **One instance per device** - Credentials are stored per-user, so only one Spotify module per machine
 
 ## License
 

@@ -21,8 +21,8 @@ from viam.resource.registry import Registry, ResourceCreatorRegistration
 from viam.resource.types import Model, ModelFamily
 from viam.services.generic import Generic
 
-from .librespot_client import LibrespotClient
-from .librespot_manager import LibrespotManager
+from librespot_client import LibrespotClient
+from librespot_manager import LibrespotManager
 
 LOGGER = getLogger("gambit-robotics:service:spotify")
 

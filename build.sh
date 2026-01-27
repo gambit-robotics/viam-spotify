@@ -35,9 +35,14 @@ pyinstaller --onefile --noconfirm \
     --hidden-import=requests \
     --hidden-import=websocket \
     --hidden-import=yaml \
+    --hidden-import=audio_discovery \
+    --hidden-import=spotify_service \
+    --hidden-import=librespot_client \
+    --hidden-import=librespot_manager \
     --collect-submodules=viam \
     --collect-submodules=grpclib \
     --collect-submodules=google \
+    --paths=src \
     src/main.py
 
 # Create dist directory

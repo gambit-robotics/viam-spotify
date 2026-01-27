@@ -1,6 +1,6 @@
 [project]
 name = "viam-spotify"
-version = "0.0.14"
+version = "0.0.15"
 description = "Spotify Connect module for Viam"
 requires-python = ">=3.10"
 

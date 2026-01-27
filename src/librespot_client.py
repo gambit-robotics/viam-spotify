@@ -81,33 +81,44 @@ class LibrespotClient:
         endpoint: str,
         json_data: dict | None = None,
         params: dict | None = None,
+        retries: int = 2,
     ) -> dict | None:
-        """Make an HTTP request to go-librespot API."""
+        """Make an HTTP request to go-librespot API with retry logic."""
         url = f"{self.api_url}{endpoint}"
-        try:
-            response = requests.request(
-                method=method,
-                url=url,
-                json=json_data,
-                params=params,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            if response.text:
-                return response.json()
-            return {}
-        except requests.exceptions.ConnectionError:
-            LOGGER.debug(f"Connection error to go-librespot at {url}")
-            return None
-        except requests.exceptions.Timeout:
-            LOGGER.warning(f"Timeout connecting to go-librespot at {url}")
-            return None
-        except requests.exceptions.HTTPError as e:
-            LOGGER.warning(f"HTTP error from go-librespot: {e}")
-            return None
-        except json.JSONDecodeError:
-            LOGGER.warning(f"Invalid JSON from go-librespot: {url}")
-            return None
+
+        for attempt in range(retries + 1):
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    json=json_data,
+                    params=params,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                if response.text:
+                    return response.json()
+                return {}
+            except requests.exceptions.ConnectionError:
+                if attempt < retries:
+                    time.sleep(0.5)
+                    continue
+                LOGGER.debug(f"Connection error to go-librespot at {url}")
+                return None
+            except requests.exceptions.Timeout:
+                if attempt < retries:
+                    time.sleep(0.5)
+                    continue
+                LOGGER.warning(f"Timeout connecting to go-librespot at {url}")
+                return None
+            except requests.exceptions.HTTPError as e:
+                LOGGER.warning(f"HTTP error from go-librespot: {e}")
+                return None
+            except json.JSONDecodeError:
+                LOGGER.warning(f"Invalid JSON from go-librespot: {url}")
+                return None
+
+        return None
 
     def is_available(self) -> bool:
         """Check if go-librespot API is available."""

@@ -146,7 +146,7 @@ class AudioDiscovery(Discovery, Reconfigurable):
                 devices.append({
                     "backend": BACKEND_ALSA,
                     "name": f"hw:{card_num},{device_num}",
-                    "description": f"{card_name} - {device_name}",
+                    "description": card_name,
                     "card_id": card_id,
                     "card_num": int(card_num),
                     "device_num": int(device_num),
@@ -205,7 +205,7 @@ class AudioDiscovery(Discovery, Reconfigurable):
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_PULSEAUDIO
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
-            config.attributes.fields["device_name"].string_value = f"Spotify ({device.get('description', 'Speaker')})"
+            config.attributes.fields["device_name"].string_value = device.get("description", "Speaker")
             configs.append(config)
 
         # Add ALSA devices
@@ -218,7 +218,7 @@ class AudioDiscovery(Discovery, Reconfigurable):
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_ALSA
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
-            config.attributes.fields["device_name"].string_value = f"Spotify ({device.get('description', 'Speaker')})"
+            config.attributes.fields["device_name"].string_value = device.get("description", "Speaker")
             configs.append(config)
 
         LOGGER.info(

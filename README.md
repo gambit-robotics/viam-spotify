@@ -274,28 +274,6 @@ make run
 | `make build` | Build module tarball |
 | `make clean` | Remove build artifacts |
 
-### CI/CD
-
-This module uses GitHub Actions for continuous integration and deployment:
-
-- **checks.yml** - Runs linting and type checking on PRs
-- **build.yml** - Builds module on PRs and pushes to main
-- **deploy.yml** - Deploys to Viam Registry on release
-
-To deploy a new version:
-1. Create a GitHub release with a semantic version tag (e.g., `v1.0.0`)
-2. The deploy workflow automatically builds and uploads to the Viam Registry
-
-**Required secrets:**
-- `VIAM_KEY_ID` - Organization API key ID
-- `VIAM_KEY_VALUE` - Organization API key value
-
-Generate keys with:
-```bash
-viam organizations list  # Get your org ID
-viam organization api-key create --org-id YOUR_ORG_ID --name github-actions
-```
-
 ## Troubleshooting
 
 ### Device doesn't appear in Spotify app
@@ -325,6 +303,40 @@ viam organization api-key create --org-id YOUR_ORG_ID --name github-actions
 - **No search/browse/library access** - This module uses the Spotify Connect protocol (go-librespot), not the Spotify Web API. You can control playback (play, pause, skip, volume, etc.) and play any URI if you know it, but you cannot search for tracks or access user playlists. Users search on their phone and cast to the device - same model as Sonos or Chromecast.
 - **Protocol changes** - Spotify can break librespot (rare, usually fixed quickly)
 - **Linux only** - go-librespot pre-built binaries are only available for Linux. The module will start on macOS but playback won't work without building go-librespot from source.
+
+## Roadmap / TODO
+
+### Search for URIs
+
+Currently, users must know the Spotify URI to play specific content. A search feature would allow looking up tracks, albums, and playlists by name.
+
+**Why it's not built-in:** [go-librespot](https://github.com/devgianlu/go-librespot) only implements the Spotify Connect protocol (playback control). It has no search endpoint - see the [API spec](https://github.com/devgianlu/go-librespot/blob/master/api-spec.yml).
+
+**Implementation approach:** Use the [Spotify Web API](https://developer.spotify.com/documentation/web-api) search endpoint:
+
+```
+GET https://api.spotify.com/v1/search?q={query}&type=track,album,playlist
+```
+
+**Requirements:**
+- Create a [Spotify Developer App](https://developer.spotify.com/dashboard) to get `client_id` and `client_secret`
+- Implement [Client Credentials Flow](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow) for OAuth 2.0 token
+- Add new config attributes: `spotify_client_id`, `spotify_client_secret`
+- Add new commands: `search_tracks`, `search_albums`, `search_playlists`
+
+**Example response structure:**
+```json
+{
+  "command": "search_tracks",
+  "query": "bohemian rhapsody",
+  "results": [
+    {"name": "Bohemian Rhapsody", "artist": "Queen", "uri": "spotify:track:4u7EnebtmKWzUH433cf5Qv"},
+    ...
+  ]
+}
+```
+
+**Note:** As of [November 2024](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api), some Web API endpoints (recommendations, audio features) are restricted for new apps, but the search endpoint remains available.
 
 ## License
 

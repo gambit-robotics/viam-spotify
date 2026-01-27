@@ -76,11 +76,7 @@ The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a s
 
 ## Audio Discovery
 
-The module includes a discovery service to help identify available audio devices on your system. This is useful for finding the correct `audio_device` value for your configuration.
-
-### Using Discovery
-
-Add the discovery service to your configuration:
+Use the `audio-discovery` service to find available audio devices for configuration:
 
 ```json
 {
@@ -95,33 +91,7 @@ Add the discovery service to your configuration:
 }
 ```
 
-Then use `discover_resources()` to get suggested Spotify configurations for each audio device:
-
-```python
-from viam.services.discovery import Discovery
-
-discovery = Discovery.from_robot(robot, "audio-discovery")
-configs = await discovery.discover_resources()
-
-for config in configs:
-    print(f"Device: {config.attributes['_description']}")
-    print(f"  audio_backend: {config.attributes['audio_backend']}")
-    print(f"  audio_device: {config.attributes['audio_device']}")
-```
-
-### Discovery Commands
-
-| Command | Description |
-|---------|-------------|
-| `get_backend` | Returns detected audio backend (`pipewire`, `pulseaudio`, or `alsa`) |
-| `list_sinks` | List PulseAudio/PipeWire sinks with details |
-| `list_alsa` | List ALSA devices |
-
-```python
-# Check which audio backend is available
-result = await discovery.do_command({"command": "get_backend"})
-print(f"Audio backend: {result['backend']}")
-```
+Call `discover_resources()` to get suggested Spotify configurations for each detected audio device.
 
 ## User Flow
 

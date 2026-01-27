@@ -18,7 +18,7 @@
     }
   ],
   "markdown_link": "README.md",
-  "entrypoint": "./exec.sh",
+  "entrypoint": "./spotify-module",
   "build": {
     "setup": "./setup.sh",
     "build": "make module.tar.gz",

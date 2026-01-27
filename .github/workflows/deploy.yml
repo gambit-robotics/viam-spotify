@@ -1,9 +1,9 @@
 name: Deploy
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 jobs:
   publish:
@@ -13,7 +13,7 @@ jobs:
 
       - uses: viamrobotics/build-action@v1
         with:
-          version: ${{ github.event.release.tag_name || github.ref_name }}
+          version: ${{ github.ref_name }}
           ref: ${{ github.sha }}
           key-id: ${{ secrets.VIAM_KEY_ID }}
           key-value: ${{ secrets.VIAM_KEY_VALUE }}

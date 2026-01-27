@@ -1,8 +1,6 @@
 name: Checks
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -24,4 +22,4 @@ jobs:
 
       - name: Type check
         run: make typecheck
-        continue-on-error: true  # mypy may fail on viam-sdk types
+        continue-on-error: true

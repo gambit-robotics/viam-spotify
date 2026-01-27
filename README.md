@@ -1,4 +1,4 @@
-# Module gambit-robotics:spotify
+# Module spotify
 
 Turns your device into a Spotify Connect speaker. Users connect from their Spotify app - no OAuth, no developer app required.
 
@@ -18,6 +18,8 @@ This module provides the following models:
 
 ### Configuration
 
+The following attribute template can be used to configure this model:
+
 ```json
 {
   "device_name": "<string>",
@@ -30,6 +32,8 @@ This module provides the following models:
 ```
 
 #### Configuration Attributes
+
+The following attributes are available for the `gambit-robotics:service:spotify` model:
 
 | Name | Type | Inclusion | Description |
 |------|------|-----------|-------------|
@@ -80,11 +84,15 @@ Discovers available audio output devices and provides suggested Spotify configur
 
 ### Configuration
 
-No configuration attributes required.
+The following attribute template can be used to configure this model:
 
 ```json
 {}
 ```
+
+#### Configuration Attributes
+
+No configuration attributes required.
 
 ### discover_resources()
 

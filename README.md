@@ -1,6 +1,96 @@
-# Spotify Connect Module for Viam
+# Module gambit-robotics:spotify
 
-A Viam service module that turns your device into a **Spotify Connect speaker**. Users connect from their Spotify app - no OAuth, no developer app required.
+Turns your device into a Spotify Connect speaker. Users connect from their Spotify app - no OAuth, no developer app required.
+
+## Supported Platforms
+
+- **Linux x64**
+- **Linux ARM64**
+
+## Models
+
+This module provides the following models:
+
+- [`gambit-robotics:service:spotify`](#model-gambit-roboticsservicespotify) - Spotify Connect playback control
+- [`gambit-robotics:service:audio-discovery`](#model-gambit-roboticsserviceaudio-discovery) - Discover audio output devices
+
+## Model gambit-robotics:service:spotify
+
+### Configuration
+
+```json
+{
+  "device_name": "<string>",
+  "audio_device": "<string>",
+  "audio_backend": "<string>",
+  "api_port": <int>,
+  "bitrate": <int>,
+  "initial_volume": <int>
+}
+```
+
+#### Configuration Attributes
+
+| Name | Type | Inclusion | Description |
+|------|------|-----------|-------------|
+| `device_name` | string | **Required** | Name shown in Spotify app (e.g., "Kitchen Speaker") |
+| `audio_device` | string | Optional | Audio device/sink name. Default: `default` |
+| `audio_backend` | string | Optional | Audio backend: `pulseaudio` (recommended) or `alsa`. Default: `pulseaudio` |
+| `api_port` | int | Optional | Port for go-librespot API. Default: `3678` |
+| `bitrate` | int | Optional | Audio bitrate (96, 160, or 320 kbps). Default: `320` |
+| `initial_volume` | int | Optional | Initial volume (0-100). Default: `50` |
+
+#### Requirements
+
+- Spotify Premium account (required for Spotify Connect)
+- Audio output device (speakers, DAC, etc.)
+- PulseAudio or PipeWire (default on Debian Trixie / Raspberry Pi OS)
+
+### do_command()
+
+All commands are called via `do_command({"command": "...", ...})`.
+
+#### Status Commands
+
+| Command | Params | Returns |
+|---------|--------|---------|
+| `get_status` | - | Full player state |
+| `get_current_track` | - | Track info with album art colors |
+
+#### Playback Commands
+
+| Command | Params | Returns |
+|---------|--------|---------|
+| `play` | `uri?` | `{success: bool}` |
+| `pause` | - | `{success: bool}` |
+| `toggle_playback` | - | `{success: bool}` |
+| `next` | - | `{success: bool}` |
+| `previous` | - | `{success: bool}` |
+| `seek` | `position_ms: int` | `{success: bool}` |
+| `set_volume` | `volume: int (0-100)` | `{success: bool}` |
+| `shuffle` | `state: bool` | `{success: bool}` |
+| `repeat` | `state: "track"/"context"/"off"` | `{success: bool}` |
+| `add_to_queue` | `uri: str` | `{success: bool}` |
+| `play_uri` | `uri: str`, `skip_to_uri?: str` | `{success: bool}` |
+| `get_queue` | - | `{queue: [{name, artist, uri}, ...]}` |
+
+## Model gambit-robotics:service:audio-discovery
+
+Discovers available audio output devices and provides suggested Spotify configurations.
+
+### Configuration
+
+No configuration attributes required.
+
+```json
+{}
+```
+
+### discover_resources()
+
+Call `discover_resources()` to get suggested Spotify configurations for each detected audio device.
+
+---
 
 ## How It Works
 
@@ -20,78 +110,7 @@ A Viam service module that turns your device into a **Spotify Connect speaker**.
 
 The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a subprocess, which implements the Spotify Connect protocol. Your device appears as a speaker in the Spotify app, just like a Sonos or Chromecast.
 
-## Models
-
-| Model | API | Description |
-|-------|-----|-------------|
-| `gambit-robotics:service:spotify` | `rdk:service:generic` | Spotify Connect playback control service |
-| `gambit-robotics:service:audio-discovery` | `rdk:service:discovery` | Discover audio output devices for configuration |
-
-### Requirements
-
-- Spotify Premium account (required for Spotify Connect)
-- Audio output device (speakers, DAC, etc.)
-- PulseAudio or PipeWire (default on Debian Trixie / Raspberry Pi OS) - allows coexistence with other audio modules like [system-audio](https://github.com/viam-modules/system-audio)
-
 **No Spotify Developer App needed!**
-
-## Configuration
-
-| Attribute | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `device_name` | string | **Yes** | - | Name shown in Spotify app (e.g., "Kitchen Speaker") |
-| `api_port` | int | No | `3678` | Port for go-librespot API |
-| `audio_backend` | string | No | `pulseaudio` | Audio backend: `pulseaudio` (recommended) or `alsa` |
-| `audio_device` | string | No | `default` | Audio device/sink name |
-| `bitrate` | int | No | `320` | Audio bitrate (96, 160, or 320 kbps) |
-| `initial_volume` | int | No | `50` | Initial volume (0-100) |
-
-### Example Configuration
-
-```json
-{
-  "modules": [
-    {
-      "type": "registry",
-      "name": "gambit_spotify",
-      "module_id": "gambit-robotics:spotify"
-    }
-  ],
-  "services": [
-    {
-      "name": "spotify",
-      "namespace": "rdk",
-      "type": "generic",
-      "model": "gambit-robotics:service:spotify",
-      "attributes": {
-        "device_name": "Kitchen Chef",
-        "audio_device": "default",
-        "bitrate": 320,
-        "initial_volume": 50
-      }
-    }
-  ]
-}
-```
-
-## Audio Discovery
-
-Use the `audio-discovery` service to find available audio devices for configuration:
-
-```json
-{
-  "services": [
-    {
-      "name": "audio-discovery",
-      "namespace": "rdk",
-      "type": "discovery",
-      "model": "gambit-robotics:service:audio-discovery"
-    }
-  ]
-}
-```
-
-Call `discover_resources()` to get suggested Spotify configurations for each detected audio device.
 
 ## User Flow
 
@@ -102,18 +121,7 @@ Call `discover_resources()` to get suggested Spotify configurations for each det
 5. **First connection** - Credentials stored for future sessions
 6. **Music plays** - Through your device's speakers
 
-No QR codes, no OAuth, no developer dashboard. Just connect and play.
-
-## API Reference
-
-All commands are called via `do_command({"command": "...", ...})`.
-
-### Status
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `get_status` | - | Full player state (see below) |
-| `get_current_track` | - | Track info with album art colors |
+## API Response Examples
 
 **`get_status` response:**
 ```json
@@ -162,28 +170,6 @@ All commands are called via `do_command({"command": "...", ...})`.
   "disc_number": 1
 }
 ```
-
-### Playback Control
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `play` | `uri?` | `{success: bool}` |
-| `pause` | - | `{success: bool}` |
-| `toggle_playback` | - | `{success: bool}` |
-| `next` | - | `{success: bool}` |
-| `previous` | - | `{success: bool}` |
-| `seek` | `position_ms: int` | `{success: bool}` |
-| `set_volume` | `volume: int (0-100)` | `{success: bool}` |
-| `shuffle` | `state: bool` | `{success: bool}` |
-| `repeat` | `state: "track"/"context"/"off"` | `{success: bool}` |
-| `add_to_queue` | `uri: str` | `{success: bool}` |
-| `play_uri` | `uri: str`, `skip_to_uri?: str` | `{success: bool}` |
-
-### Queue
-
-| Command | Params | Returns |
-|---------|--------|---------|
-| `get_queue` | - | `{queue: [{name, artist, uri}, ...]}` |
 
 ## Usage Examples
 

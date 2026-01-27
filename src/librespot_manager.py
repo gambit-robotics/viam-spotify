@@ -5,21 +5,20 @@ Handles starting, monitoring, and restarting go-librespot.
 """
 import os
 import signal
+import socket
 import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 import yaml
-
 from viam.logging import getLogger
 
 LOGGER = getLogger("gambit-robotics:service:spotify")
 
 # Default paths
 DEFAULT_BINARY_PATH = "/usr/local/bin/go-librespot"
-DEFAULT_CONFIG_DIR = "/tmp/go-librespot"
+DEFAULT_CONFIG_DIR = os.path.expanduser("~/.config/go-librespot")
 
 
 class LibrespotManager:
@@ -33,8 +32,8 @@ class LibrespotManager:
         audio_device: str = "default",
         bitrate: int = 320,
         initial_volume: int = 50,
-        binary_path: Optional[str] = None,
-        config_dir: Optional[str] = None,
+        binary_path: str | None = None,
+        config_dir: str | None = None,
     ):
         self.device_name = device_name
         self.api_port = api_port
@@ -45,8 +44,8 @@ class LibrespotManager:
         self.binary_path = binary_path or DEFAULT_BINARY_PATH
         self.config_dir = Path(config_dir or DEFAULT_CONFIG_DIR)
 
-        self._process: Optional[subprocess.Popen] = None
-        self._monitor_thread: Optional[threading.Thread] = None
+        self._process: subprocess.Popen | None = None
+        self._monitor_thread: threading.Thread | None = None
         self._should_run = False
         self._restart_count = 0
         self._max_restarts = 5
@@ -88,12 +87,11 @@ class LibrespotManager:
                 },
             },
 
-            # HTTP API server
+            # HTTP API server (localhost only, no CORS needed)
             "server": {
                 "enabled": True,
                 "address": "127.0.0.1",
                 "port": self.api_port,
-                "allow_origin": "*",
             },
 
             # Logging
@@ -127,9 +125,25 @@ class LibrespotManager:
             return False
         return True
 
+    def _check_port_available(self) -> bool:
+        """Check if the API port is available."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", self.api_port))
+                return True
+        except OSError:
+            LOGGER.error(
+                f"Port {self.api_port} is already in use. "
+                "Another instance may be running or choose a different api_port."
+            )
+            return False
+
     def _start_process(self) -> bool:
         """Start the go-librespot process."""
         if not self._check_binary():
+            return False
+
+        if not self._check_port_available():
             return False
 
         self._write_config()
@@ -174,13 +188,15 @@ class LibrespotManager:
             if self._process is not None:
                 return_code = self._process.poll()
                 if return_code is not None:
-                    # Capture stderr before losing the process
+                    # Capture stderr using communicate() to avoid blocking
                     stderr_output = ""
-                    if self._process.stderr:
-                        try:
-                            stderr_output = self._process.stderr.read()
-                        except Exception:
-                            pass
+                    try:
+                        _, stderr_output = self._process.communicate(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        self._process.kill()
+                        _, stderr_output = self._process.communicate()
+                    except Exception:
+                        pass
 
                     LOGGER.warning(f"go-librespot exited with code {return_code}")
                     if stderr_output:

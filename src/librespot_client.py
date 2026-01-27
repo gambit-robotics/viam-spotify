@@ -6,12 +6,12 @@ Provides methods for playback control and real-time status updates.
 import json
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 import requests
 import websocket
-
 from viam.logging import getLogger
 
 LOGGER = getLogger("gambit-robotics:service:spotify")
@@ -62,13 +62,15 @@ class LibrespotClient:
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
 
-        self._ws: Optional[websocket.WebSocketApp] = None
-        self._ws_thread: Optional[threading.Thread] = None
+        self._ws: websocket.WebSocketApp | None = None
+        self._ws_thread: threading.Thread | None = None
         self._ws_connected = False
         self._should_connect = False
+        self._reconnect_pending = False
+        self._reconnect_lock = threading.Lock()
 
         self._status_lock = threading.Lock()
-        self._cached_status: Optional[PlayerStatus] = None
+        self._cached_status: PlayerStatus | None = None
         self._last_status_time: float = 0
 
         self._event_callbacks: list[Callable[[dict], None]] = []
@@ -77,9 +79,9 @@ class LibrespotClient:
         self,
         method: str,
         endpoint: str,
-        json_data: Optional[dict] = None,
-        params: Optional[dict] = None,
-    ) -> Optional[dict]:
+        json_data: dict | None = None,
+        params: dict | None = None,
+    ) -> dict | None:
         """Make an HTTP request to go-librespot API."""
         url = f"{self.api_url}{endpoint}"
         try:
@@ -112,7 +114,7 @@ class LibrespotClient:
         result = self._request("GET", "/status")
         return result is not None
 
-    def get_status(self) -> Optional[PlayerStatus]:
+    def get_status(self) -> PlayerStatus | None:
         """Get current player status."""
         data = self._request("GET", "/status")
         if data is None:
@@ -300,7 +302,7 @@ class LibrespotClient:
             LOGGER.warning(f"Unknown repeat mode: {mode}")
             return False
 
-    def play_uri(self, uri: str, skip_to_uri: Optional[str] = None) -> bool:
+    def play_uri(self, uri: str, skip_to_uri: str | None = None) -> bool:
         """Play a Spotify URI (track, album, playlist, etc.)."""
         body: dict[str, Any] = {"uri": uri}
         if skip_to_uri:
@@ -316,7 +318,7 @@ class LibrespotClient:
         )
         return result is not None
 
-    def get_queue(self) -> Optional[list[dict]]:
+    def get_queue(self) -> list[dict] | None:
         """Get the current queue (if supported by go-librespot version)."""
         result = self._request("GET", "/queue")
         if result is None:
@@ -354,17 +356,37 @@ class LibrespotClient:
     def _on_ws_close(
         self,
         ws: websocket.WebSocket,
-        close_status_code: Optional[int],
-        close_msg: Optional[str],
+        close_status_code: int | None,
+        close_msg: str | None,
     ) -> None:
         """Handle WebSocket close."""
         LOGGER.debug(f"WebSocket closed: {close_status_code} {close_msg}")
         self._ws_connected = False
 
-        # Reconnect if we should still be connected
+        # Reconnect in a new thread to avoid recursive blocking
+        # Use lock to prevent spawning multiple reconnect threads
         if self._should_connect:
+            with self._reconnect_lock:
+                if self._reconnect_pending:
+                    return  # Another reconnect is already scheduled
+                self._reconnect_pending = True
+
+            reconnect_thread = threading.Thread(
+                target=self._reconnect_ws,
+                daemon=True,
+                name="librespot-ws-reconnect",
+            )
+            reconnect_thread.start()
+
+    def _reconnect_ws(self) -> None:
+        """Reconnect to WebSocket after a delay."""
+        try:
             time.sleep(2)
-            self._connect_ws()
+            if self._should_connect:
+                self._connect_ws()
+        finally:
+            with self._reconnect_lock:
+                self._reconnect_pending = False
 
     def _on_ws_open(self, ws: websocket.WebSocket) -> None:
         """Handle WebSocket open."""
@@ -416,7 +438,7 @@ class LibrespotClient:
         if callback in self._event_callbacks:
             self._event_callbacks.remove(callback)
 
-    def get_cached_status(self, max_age: float = 1.0) -> Optional[PlayerStatus]:
+    def get_cached_status(self, max_age: float = 1.0) -> PlayerStatus | None:
         """Get cached status if fresh enough, otherwise fetch new."""
         with self._status_lock:
             if (

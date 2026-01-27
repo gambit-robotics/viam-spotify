@@ -8,7 +8,8 @@ import asyncio
 import platform
 import re
 import subprocess
-from typing import Any, ClassVar, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any, ClassVar
 
 from typing_extensions import Self
 from viam.logging import getLogger
@@ -21,6 +22,11 @@ from viam.resource.types import Model, ModelFamily
 from viam.services.discovery import Discovery
 
 LOGGER = getLogger("gambit-robotics:service:audio-discovery")
+
+
+def _sanitize_name(s: str) -> str:
+    """Convert to valid component name (lowercase, alphanumeric, hyphens)."""
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 # Backend constants
 BACKEND_PIPEWIRE = "pipewire"
@@ -59,7 +65,7 @@ class AudioDiscovery(Discovery, Reconfigurable):
     async def close(self) -> None:
         pass
 
-    def _run_command(self, cmd: list[str], timeout: int = 5) -> Optional[str]:
+    def _run_command(self, cmd: list[str], timeout: int = 5) -> str | None:
         """Run a shell command and return output."""
         try:
             result = subprocess.run(
@@ -159,8 +165,8 @@ class AudioDiscovery(Discovery, Reconfigurable):
     async def discover_resources(
         self,
         *,
-        extra: Optional[Mapping[str, Any]] = None,
-        timeout: Optional[float] = None,
+        extra: Mapping[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> list[ComponentConfig]:
         """Discover available audio output devices."""
         if platform.system() != "Linux":
@@ -177,43 +183,42 @@ class AudioDiscovery(Discovery, Reconfigurable):
         )
 
         configs = []
+        used_names: set[str] = set()
+
+        def get_unique_name(base_name: str) -> str:
+            """Get a unique component name, appending index if needed."""
+            name = base_name
+            counter = 2
+            while name in used_names:
+                name = f"{base_name}-{counter}"
+                counter += 1
+            used_names.add(name)
+            return name
 
         # Add PulseAudio/PipeWire sinks
         for i, device in enumerate(pulse_devices):
+            desc = device.get("description", f"speaker-{i}")
             config = ComponentConfig(
-                name=f"spotify-{device.get('name', f'sink-{i}')}",
+                name=get_unique_name(_sanitize_name(desc)),
                 api="rdk:service:generic",
                 model="gambit-robotics:service:spotify",
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_PULSEAUDIO
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
             config.attributes.fields["device_name"].string_value = f"Spotify ({device.get('description', 'Speaker')})"
-
-            if "description" in device:
-                config.attributes.fields["_description"].string_value = device["description"]
-            if "sample_rate" in device:
-                config.attributes.fields["_sample_rate"].number_value = device["sample_rate"]
-            if "channels" in device:
-                config.attributes.fields["_channels"].number_value = device["channels"]
-            if "state" in device:
-                config.attributes.fields["_state"].string_value = device["state"]
-
             configs.append(config)
 
         # Add ALSA devices
         for i, device in enumerate(alsa_devices):
+            desc = device.get("description", f"speaker-{i}")
             config = ComponentConfig(
-                name=f"spotify-alsa-{device.get('card_id', f'card-{i}')}",
+                name=get_unique_name(_sanitize_name(desc)),
                 api="rdk:service:generic",
                 model="gambit-robotics:service:spotify",
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_ALSA
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
             config.attributes.fields["device_name"].string_value = f"Spotify ({device.get('description', 'Speaker')})"
-
-            if "description" in device:
-                config.attributes.fields["_description"].string_value = device["description"]
-
             configs.append(config)
 
         LOGGER.info(
@@ -227,7 +232,7 @@ class AudioDiscovery(Discovery, Reconfigurable):
         self,
         command: Mapping[str, Any],
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         **kwargs,
     ) -> Mapping[str, Any]:
         """Handle custom commands."""

@@ -7,7 +7,9 @@ Users connect from their Spotify app - no OAuth or developer app required.
 """
 import asyncio
 import io
-from typing import Any, ClassVar, Mapping, Optional, Sequence
+from collections import OrderedDict
+from collections.abc import Mapping, Sequence
+from typing import Any, ClassVar
 
 import requests
 from colorthief import ColorThief
@@ -47,9 +49,11 @@ class SpotifyService(Generic, Reconfigurable):
         ModelFamily("gambit-robotics", "service"), "spotify"
     )
 
-    _manager: Optional[LibrespotManager] = None
-    _client: Optional[LibrespotClient] = None
-    _color_cache: Optional[dict[str, list[str]]] = None
+    _manager: LibrespotManager | None = None
+    _client: LibrespotClient | None = None
+    _color_cache: OrderedDict[str, list[str]] | None = None
+    _color_cache_max_size: int = 100
+    _startup_error: str | None = None
 
     @classmethod
     def new(
@@ -101,15 +105,20 @@ class SpotifyService(Generic, Reconfigurable):
             initial_volume=initial_volume,
         )
         self._client = LibrespotClient(api_url=self._manager.api_url)
-        self._color_cache = {}
+        self._color_cache = OrderedDict()
 
         # Start go-librespot
+        self._startup_error = None
         if self._manager.start():
             LOGGER.info(f"Spotify Connect device '{device_name}' starting...")
             # Start WebSocket listener for real-time events
             self._client.start_event_listener()
         else:
-            LOGGER.error("Failed to start go-librespot subprocess")
+            self._startup_error = (
+                "Failed to start go-librespot. Check that the binary is installed "
+                "at /usr/local/bin/go-librespot and the configured port is available."
+            )
+            LOGGER.error(self._startup_error)
 
     async def close(self) -> None:
         """Clean up resources."""
@@ -124,7 +133,7 @@ class SpotifyService(Generic, Reconfigurable):
         self,
         command: Mapping[str, Any],
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         **kwargs,
     ) -> Mapping[str, Any]:
         cmd = command.get("command", "")
@@ -155,12 +164,16 @@ class SpotifyService(Generic, Reconfigurable):
 
         return {"error": f"Unknown command: {cmd}"}
 
-    def _check_ready(self) -> Optional[dict]:
+    def _check_ready(self) -> dict | None:
         """Check if service is ready for commands."""
         if self._manager is None or self._client is None:
             return {"error": "Service not configured"}
+        if self._startup_error:
+            return {"error": self._startup_error}
         if not self._manager.is_running():
-            return {"error": "go-librespot not running"}
+            return {
+                "error": "go-librespot not running. It may have crashed - check logs for details."
+            }
         return None
 
     async def _cmd_get_status(self, cmd: Mapping[str, Any]) -> dict:
@@ -205,17 +218,22 @@ class SpotifyService(Generic, Reconfigurable):
         }
 
     async def _get_colors_cached(self, artwork_url: str) -> list[str]:
-        """Get colors for artwork, using cache."""
-        if self._color_cache and artwork_url in self._color_cache:
+        """Get colors for artwork, using LRU cache."""
+        if self._color_cache is not None and artwork_url in self._color_cache:
+            # Move to end (most recently used)
+            self._color_cache.move_to_end(artwork_url)
             return self._color_cache[artwork_url]
 
         loop = asyncio.get_running_loop()
         colors = await loop.run_in_executor(None, extract_colors, artwork_url)
 
         if self._color_cache is None:
-            self._color_cache = {}
-        if len(self._color_cache) > 100:
-            self._color_cache.clear()
+            self._color_cache = OrderedDict()
+
+        # Evict oldest entries if cache is full
+        while len(self._color_cache) >= self._color_cache_max_size:
+            self._color_cache.popitem(last=False)
+
         self._color_cache[artwork_url] = colors
         return colors
 

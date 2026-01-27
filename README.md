@@ -20,15 +20,18 @@ A Viam service module that turns your device into a **Spotify Connect speaker**.
 
 The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a subprocess, which implements the Spotify Connect protocol. Your device appears as a speaker in the Spotify app, just like a Sonos or Chromecast.
 
-## Model
+## Models
 
-`gambit-robotics:service:spotify` - Spotify Connect playback control service
+| Model | API | Description |
+|-------|-----|-------------|
+| `gambit-robotics:service:spotify` | `rdk:service:generic` | Spotify Connect playback control service |
+| `gambit-robotics:service:audio-discovery` | `rdk:service:discovery` | Discover audio output devices for configuration |
 
 ### Requirements
 
 - Spotify Premium account (required for Spotify Connect)
 - Audio output device (speakers, DAC, etc.)
-- PulseAudio (default on Raspberry Pi OS) - allows coexistence with other audio modules like [viam-labs/speech](https://github.com/viam-labs/speech)
+- PulseAudio or PipeWire (default on Debian Trixie / Raspberry Pi OS) - allows coexistence with other audio modules like [system-audio](https://github.com/viam-modules/system-audio)
 
 **No Spotify Developer App needed!**
 
@@ -69,6 +72,55 @@ The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a s
     }
   ]
 }
+```
+
+## Audio Discovery
+
+The module includes a discovery service to help identify available audio devices on your system. This is useful for finding the correct `audio_device` value for your configuration.
+
+### Using Discovery
+
+Add the discovery service to your configuration:
+
+```json
+{
+  "services": [
+    {
+      "name": "audio-discovery",
+      "namespace": "rdk",
+      "type": "discovery",
+      "model": "gambit-robotics:service:audio-discovery"
+    }
+  ]
+}
+```
+
+Then use `discover_resources()` to get suggested Spotify configurations for each audio device:
+
+```python
+from viam.services.discovery import Discovery
+
+discovery = Discovery.from_robot(robot, "audio-discovery")
+configs = await discovery.discover_resources()
+
+for config in configs:
+    print(f"Device: {config.attributes['_description']}")
+    print(f"  audio_backend: {config.attributes['audio_backend']}")
+    print(f"  audio_device: {config.attributes['audio_device']}")
+```
+
+### Discovery Commands
+
+| Command | Description |
+|---------|-------------|
+| `get_backend` | Returns detected audio backend (`pipewire`, `pulseaudio`, or `alsa`) |
+| `list_sinks` | List PulseAudio/PipeWire sinks with details |
+| `list_alsa` | List ALSA devices |
+
+```python
+# Check which audio backend is available
+result = await discovery.do_command({"command": "get_backend"})
+print(f"Audio backend: {result['backend']}")
 ```
 
 ## User Flow
@@ -222,18 +274,56 @@ async def display_loop():
         await asyncio.sleep(1)
 ```
 
-## Local Development
+## Development
+
+### Local Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/gambit-robotics/viam-spotify.git
 cd viam-spotify
 
-# Run setup (downloads go-librespot, installs deps)
-./setup.sh
+# Setup for development
+make setup-dev
 
 # Run locally
-./exec.sh
+make run
+```
+
+### Make Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Install production dependencies |
+| `make setup-dev` | Install dev dependencies (includes linting, testing) |
+| `make run` | Run the module locally |
+| `make test` | Run tests |
+| `make lint` | Check code style |
+| `make lint-fix` | Auto-fix code style issues |
+| `make typecheck` | Run type checking |
+| `make build` | Build module tarball |
+| `make clean` | Remove build artifacts |
+
+### CI/CD
+
+This module uses GitHub Actions for continuous integration and deployment:
+
+- **checks.yml** - Runs linting and type checking on PRs
+- **build.yml** - Builds module on PRs and pushes to main
+- **deploy.yml** - Deploys to Viam Registry on release
+
+To deploy a new version:
+1. Create a GitHub release with a semantic version tag (e.g., `v1.0.0`)
+2. The deploy workflow automatically builds and uploads to the Viam Registry
+
+**Required secrets:**
+- `VIAM_KEY_ID` - Organization API key ID
+- `VIAM_KEY_VALUE` - Organization API key value
+
+Generate keys with:
+```bash
+viam organizations list  # Get your org ID
+viam organization api-key create --org-id YOUR_ORG_ID --name github-actions
 ```
 
 ## Troubleshooting
@@ -246,9 +336,10 @@ cd viam-spotify
 
 ### No audio
 
-1. Check PulseAudio is running: `pulseaudio --check && echo "running"`
-2. List available sinks: `pactl list sinks short`
-3. Test audio: `paplay /usr/share/sounds/alsa/Front_Center.wav`
+1. Use the discovery service to find available audio devices (see Audio Discovery section)
+2. Check PulseAudio/PipeWire is running: `pactl info`
+3. List available sinks: `pactl list sinks short`
+4. Test audio: `paplay /usr/share/sounds/alsa/Front_Center.wav`
 
 **Note:** Raspberry Pi OS Lite doesn't include PulseAudio. Set `audio_backend: alsa` in config.
 

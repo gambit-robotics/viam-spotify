@@ -10,17 +10,22 @@
       "model": "gambit-robotics:service:spotify",
       "short_description": "Spotify Connect speaker with playback control",
       "markdown_link": "README.md"
+    },
+    {
+      "api": "rdk:service:discovery",
+      "model": "gambit-robotics:service:audio-discovery",
+      "short_description": "Discover audio output devices for Spotify configuration"
     }
   ],
   "markdown_link": "README.md",
   "entrypoint": "./exec.sh",
   "build": {
     "setup": "./setup.sh",
+    "build": "make module.tar.gz",
+    "path": "module.tar.gz",
     "arch": [
       "linux/amd64",
-      "linux/arm64",
-      "darwin/amd64",
-      "darwin/arm64"
+      "linux/arm64"
     ]
   }
 }

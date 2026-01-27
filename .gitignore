@@ -1,5 +1,9 @@
 # Build artifacts
 module.tar.gz
+*.spec
+
+# PyInstaller
+*.manifest
 
 # Python
 __pycache__/
@@ -42,3 +46,8 @@ Thumbs.db
 
 # Spotify tokens (local dev)
 .spotify_token
+
+# Type checking / Linting
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

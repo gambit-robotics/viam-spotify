@@ -296,7 +296,7 @@ make run
 - **Spotify Premium required** - Free accounts don't support Spotify Connect
 - **No search/browse/library access** - This module uses the Spotify Connect protocol (go-librespot), not the Spotify Web API. You can control playback (play, pause, skip, volume, etc.) and play any URI if you know it, but you cannot search for tracks or access user playlists. Users search on their phone and cast to the device - same model as Sonos or Chromecast.
 - **Protocol changes** - Spotify can break librespot (rare, usually fixed quickly)
-- **Linux only** - go-librespot pre-built binaries are only available for Linux. The module will start on macOS but playback won't work without building go-librespot from source.
+- **Linux only** - This module only supports Linux (x64 and ARM64)
 
 ## Roadmap / TODO
 

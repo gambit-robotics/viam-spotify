@@ -9,12 +9,11 @@ PYTHON="python3"
 LIBRESPOT_VERSION="v0.6.2"
 LIBRESPOT_BIN="/usr/local/bin/go-librespot"
 
-# Detect platform and get archive name
+# Detect platform and get archive name (Linux only)
 get_archive_name() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local arch=$(uname -m)
 
-    # go-librespot only provides Linux binaries
     if [ "$os" != "linux" ]; then
         echo ""
         return 1
@@ -49,11 +48,9 @@ install_librespot() {
     local archive_name=$(get_archive_name)
     if [ -z "$archive_name" ]; then
         echo ""
-        echo "Warning: go-librespot pre-built binaries only available for Linux."
-        echo "For macOS, build from source: https://github.com/devgianlu/go-librespot"
-        echo "The module will start but playback won't work without go-librespot."
+        echo "Skipping go-librespot install (not on supported Linux architecture)"
         echo ""
-        return 0  # Don't fail - let Python module handle the error gracefully
+        return 0
     fi
 
     local download_url="https://github.com/devgianlu/go-librespot/releases/download/${LIBRESPOT_VERSION}/${archive_name}"

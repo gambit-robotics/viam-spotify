@@ -17,8 +17,32 @@ from viam.logging import getLogger
 LOGGER = getLogger("gambit-robotics:service:spotify")
 
 # Default paths
-DEFAULT_BINARY_PATH = "/usr/local/bin/go-librespot"
 DEFAULT_CONFIG_DIR = os.path.expanduser("~/.config/go-librespot")
+
+
+def _find_bundled_binary() -> str:
+    """Find the go-librespot binary bundled with the module."""
+    # Check VIAM_MODULE_ROOT first (set by viam-server)
+    module_root = os.environ.get("VIAM_MODULE_ROOT")
+    if module_root:
+        bundled_path = os.path.join(module_root, "go-librespot")
+        if os.path.isfile(bundled_path):
+            return bundled_path
+
+    # Fallback: look relative to this file's directory (for local dev)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    for search_dir in [script_dir, os.path.dirname(script_dir)]:
+        bundled_path = os.path.join(search_dir, "go-librespot")
+        if os.path.isfile(bundled_path):
+            return bundled_path
+
+    # Not found - return expected path for error message
+    if module_root:
+        return os.path.join(module_root, "go-librespot")
+    return "/usr/local/bin/go-librespot"
+
+
+DEFAULT_BINARY_PATH = _find_bundled_binary()
 
 
 class LibrespotManager:
@@ -43,6 +67,8 @@ class LibrespotManager:
         self.initial_volume = initial_volume
         self.binary_path = binary_path or DEFAULT_BINARY_PATH
         self.config_dir = Path(config_dir or DEFAULT_CONFIG_DIR)
+
+        LOGGER.info(f"Using go-librespot binary: {self.binary_path}")
 
         self._process: subprocess.Popen | None = None
         self._monitor_thread: threading.Thread | None = None
@@ -115,14 +141,21 @@ class LibrespotManager:
         binary = Path(self.binary_path)
         if not binary.exists():
             LOGGER.error(f"go-librespot binary not found at {self.binary_path}")
+            module_root = os.environ.get("VIAM_MODULE_ROOT", "unknown")
+            LOGGER.error(f"Module root: {module_root}")
             LOGGER.error(
-                "Pre-built binaries are only available for Linux. "
-                "For macOS, build from source: https://github.com/devgianlu/go-librespot"
+                "The go-librespot binary should be bundled with the module. "
+                "Try redeploying the module or check that the build included go-librespot."
             )
             return False
         if not os.access(self.binary_path, os.X_OK):
-            LOGGER.error(f"go-librespot binary at {self.binary_path} is not executable")
-            return False
+            LOGGER.warning(f"go-librespot binary at {self.binary_path} is not executable, fixing...")
+            try:
+                os.chmod(self.binary_path, 0o755)
+                LOGGER.info(f"Made {self.binary_path} executable")
+            except OSError as e:
+                LOGGER.error(f"Failed to make binary executable: {e}")
+                return False
         return True
 
     def _check_port_available(self) -> bool:

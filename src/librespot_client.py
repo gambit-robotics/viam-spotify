@@ -334,9 +334,10 @@ class LibrespotClient:
             LOGGER.debug(f"WebSocket event: {event_type}")
 
             # Update cached status from events
-            if event_type in ("metadata", "playing", "paused", "seek", "volume"):
-                # Fetch fresh status on important events
-                self.get_status()
+            # DISABLED FOR DEBUGGING - this may be causing go-librespot to freeze
+            # if event_type in ("metadata", "playing", "paused", "seek", "volume"):
+            #     # Fetch fresh status on important events
+            #     self.get_status()
 
             # Notify callbacks
             for callback in self._event_callbacks:

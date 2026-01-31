@@ -227,18 +227,25 @@ class LibrespotManager:
             LOGGER.debug(f"Error checking for orphaned process: {e}")
             return True  # Continue anyway, port check will catch issues
 
-    def _check_port_available(self) -> bool:
-        """Check if the API port is available."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(("127.0.0.1", self.api_port))
-                return True
-        except OSError:
-            LOGGER.error(
-                f"Port {self.api_port} is already in use. "
-                "Another instance may be running or choose a different api_port."
-            )
-            return False
+    def _check_port_available(self, retries: int = 5, delay: float = 1.0) -> bool:
+        """Check if the API port is available, with retries for TIME_WAIT state."""
+        for attempt in range(retries):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind(("127.0.0.1", self.api_port))
+                    return True
+            except OSError:
+                if attempt < retries - 1:
+                    LOGGER.debug(f"Port {self.api_port} not available, retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                LOGGER.error(
+                    f"Port {self.api_port} is already in use after {retries} attempts. "
+                    "Another instance may be running or choose a different api_port."
+                )
+                return False
+        return False
 
     def _start_process(self) -> bool:
         """Start the go-librespot process."""

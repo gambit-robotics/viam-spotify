@@ -111,8 +111,8 @@ class SpotifyService(Generic, Reconfigurable):
         self._startup_error = None
         if self._manager.start():
             LOGGER.info(f"Spotify Connect device '{device_name}' starting...")
-            # Start WebSocket listener for real-time events
-            self._client.start_event_listener()
+            # DISABLED FOR DEBUGGING - WebSocket may be causing go-librespot to freeze
+            # self._client.start_event_listener()
         else:
             self._startup_error = (
                 "Failed to start go-librespot. Check that the binary is installed "

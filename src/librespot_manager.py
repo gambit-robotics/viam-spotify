@@ -11,6 +11,7 @@ import threading
 import time
 from pathlib import Path
 
+import requests
 import yaml
 from viam.logging import getLogger
 
@@ -196,6 +197,40 @@ class LibrespotManager:
             LOGGER.error(f"Failed to start go-librespot: {e}")
             return False
 
+    def _wait_for_api_ready(self, timeout: float = 10.0, poll_interval: float = 0.2) -> bool:
+        """Wait for the go-librespot HTTP API to become responsive.
+
+        Args:
+            timeout: Maximum time to wait in seconds.
+            poll_interval: Time between polling attempts in seconds.
+
+        Returns:
+            True if API became ready, False if timeout exceeded.
+        """
+        start_time = time.time()
+        status_url = f"{self.api_url}/status"
+
+        while time.time() - start_time < timeout:
+            # Check if process died while waiting
+            if self._process is None or self._process.poll() is not None:
+                LOGGER.error("go-librespot process died while waiting for API ready")
+                return False
+
+            try:
+                response = requests.get(status_url, timeout=1.0)
+                if response.status_code == 200:
+                    elapsed = time.time() - start_time
+                    LOGGER.info(f"go-librespot API ready after {elapsed:.2f}s")
+                    return True
+            except requests.exceptions.RequestException:
+                # API not ready yet, continue polling
+                pass
+
+            time.sleep(poll_interval)
+
+        LOGGER.error(f"Timeout waiting for go-librespot API after {timeout}s")
+        return False
+
     def _stop_process(self) -> None:
         """Stop the go-librespot process."""
         if self._process is None:
@@ -242,7 +277,10 @@ class LibrespotManager:
                             f"Restarting go-librespot ({self._restart_count}/{self._max_restarts})..."
                         )
                         time.sleep(self._restart_delay)
-                        self._start_process()
+                        if self._start_process():
+                            # Wait for API to be ready after restart
+                            if not self._wait_for_api_ready():
+                                LOGGER.warning("go-librespot restarted but API not responsive")
                     elif self._restart_count >= self._max_restarts:
                         LOGGER.error("Max restarts reached, giving up")
                         self._should_run = False
@@ -259,6 +297,13 @@ class LibrespotManager:
         self._restart_count = 0
 
         if not self._start_process():
+            self._should_run = False
+            return False
+
+        # Wait for the HTTP API to become responsive before returning success
+        if not self._wait_for_api_ready():
+            LOGGER.error("go-librespot started but API not responsive, stopping")
+            self._stop_process()
             self._should_run = False
             return False
 

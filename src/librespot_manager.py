@@ -78,6 +78,10 @@ class LibrespotManager:
         self._max_restarts = 5
         self._restart_delay = 2.0
         self._api_ready_timeout = 10.0
+        self._health_check_interval = 30  # seconds between health checks
+        self._health_check_failures = 0
+        self._max_health_check_failures = 3
+        self._last_health_check = 0.0
 
     @property
     def config_path(self) -> Path:
@@ -336,11 +340,41 @@ class LibrespotManager:
         finally:
             self._process = None
 
+    def _check_api_health(self) -> bool:
+        """Check if go-librespot API is responsive."""
+        try:
+            response = requests.get(f"{self.api_url}/status", timeout=5.0)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+
     def _monitor_loop(self) -> None:
         """Monitor thread that watches the process and restarts if needed."""
         while self._should_run:
             if self._process is not None:
                 return_code = self._process.poll()
+
+                # Health check for frozen API (process alive but not responding)
+                if return_code is None:
+                    now = time.time()
+                    if now - self._last_health_check >= self._health_check_interval:
+                        self._last_health_check = now
+                        if self._check_api_health():
+                            self._health_check_failures = 0
+                        else:
+                            self._health_check_failures += 1
+                            LOGGER.warning(
+                                f"go-librespot API health check failed "
+                                f"({self._health_check_failures}/{self._max_health_check_failures})"
+                            )
+                            if self._health_check_failures >= self._max_health_check_failures:
+                                LOGGER.error(
+                                    "go-librespot API unresponsive, killing process..."
+                                )
+                                self._health_check_failures = 0
+                                self._stop_process()
+                                # Process is now None, next iteration will trigger restart
+
                 if return_code is not None:
                     # Capture stderr using communicate() to avoid blocking
                     stderr_output = ""

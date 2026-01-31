@@ -369,11 +369,21 @@ class LibrespotManager:
                             )
                             if self._health_check_failures >= self._max_health_check_failures:
                                 LOGGER.error(
-                                    "go-librespot API unresponsive, killing process..."
+                                    "go-librespot API unresponsive, killing and restarting..."
                                 )
                                 self._health_check_failures = 0
                                 self._stop_process()
-                                # Process is now None, next iteration will trigger restart
+                                # Restart immediately
+                                if self._should_run and self._restart_count < self._max_restarts:
+                                    self._restart_count += 1
+                                    LOGGER.info(
+                                        f"Restarting go-librespot ({self._restart_count}/{self._max_restarts})..."
+                                    )
+                                    time.sleep(self._restart_delay)
+                                    if self._start_process():
+                                        if not self._wait_for_api_ready():
+                                            LOGGER.warning("go-librespot restarted but API not responsive")
+                                            self._stop_process()
 
                 if return_code is not None:
                     # Capture stderr using communicate() to avoid blocking

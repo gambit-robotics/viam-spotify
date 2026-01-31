@@ -175,12 +175,11 @@ class LibrespotManager:
         self._write_config()
 
         try:
-            # Capture stderr to see errors, stdout to DEVNULL
+            # Don't capture stderr - the pipe buffer can fill up and block go-librespot
             self._process = subprocess.Popen(
                 [self.binary_path, "--config_dir", str(self.config_dir)],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
+                stderr=subprocess.DEVNULL,
             )
             LOGGER.info(f"Started go-librespot (PID: {self._process.pid})")
             LOGGER.debug(f"Config dir: {self.config_dir}")
@@ -214,19 +213,7 @@ class LibrespotManager:
             if self._process is not None:
                 return_code = self._process.poll()
                 if return_code is not None:
-                    # Capture stderr using communicate() to avoid blocking
-                    stderr_output = ""
-                    try:
-                        _, stderr_output = self._process.communicate(timeout=1)
-                    except subprocess.TimeoutExpired:
-                        self._process.kill()
-                        _, stderr_output = self._process.communicate()
-                    except Exception:
-                        pass
-
                     LOGGER.warning(f"go-librespot exited with code {return_code}")
-                    if stderr_output:
-                        LOGGER.error(f"go-librespot stderr: {stderr_output}")
                     self._process = None
 
                     if self._should_run and self._restart_count < self._max_restarts:

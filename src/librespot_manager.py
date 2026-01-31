@@ -77,6 +77,7 @@ class LibrespotManager:
         self._restart_count = 0
         self._max_restarts = 5
         self._restart_delay = 2.0
+        self._api_ready_timeout = 10.0
 
     @property
     def config_path(self) -> Path:
@@ -159,6 +160,73 @@ class LibrespotManager:
                 return False
         return True
 
+    def _kill_orphaned_process(self) -> bool:
+        """Kill any orphaned go-librespot process using our port.
+
+        This handles the case where the module was restarted but the old
+        go-librespot subprocess is still running.
+
+        Returns:
+            True if port is now available, False if we couldn't free it.
+        """
+        try:
+            # Find process using the port with lsof
+            result = subprocess.run(
+                ["lsof", "-ti", f"tcp:{self.api_port}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return True  # No process found, port should be available
+
+            pids = result.stdout.strip().split("\n")
+            for pid_str in pids:
+                try:
+                    pid = int(pid_str.strip())
+
+                    # Verify it's actually a go-librespot process before killing
+                    cmd_result = subprocess.run(
+                        ["ps", "-p", str(pid), "-o", "comm="],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    )
+                    process_name = cmd_result.stdout.strip()
+                    if "go-librespot" not in process_name:
+                        LOGGER.warning(
+                            f"Port {self.api_port} in use by '{process_name}' (PID {pid}), not killing"
+                        )
+                        continue
+
+                    LOGGER.warning(f"Found orphaned go-librespot process {pid} on port {self.api_port}, killing...")
+                    os.kill(pid, signal.SIGTERM)
+                except (ValueError, ProcessLookupError):
+                    continue
+                except subprocess.TimeoutExpired:
+                    continue
+
+            # Wait briefly for process to exit
+            time.sleep(0.5)
+            return True
+
+        except FileNotFoundError:
+            # lsof not available, try fuser as fallback
+            try:
+                result = subprocess.run(
+                    ["fuser", "-k", f"{self.api_port}/tcp"],
+                    capture_output=True,
+                    timeout=5,
+                )
+                time.sleep(0.5)
+                return True
+            except FileNotFoundError:
+                LOGGER.debug("Neither lsof nor fuser available for orphan cleanup")
+                return True  # Can't check, let port check handle it
+        except Exception as e:
+            LOGGER.debug(f"Error checking for orphaned process: {e}")
+            return True  # Continue anyway, port check will catch issues
+
     def _check_port_available(self) -> bool:
         """Check if the API port is available."""
         try:
@@ -176,6 +244,9 @@ class LibrespotManager:
         """Start the go-librespot process."""
         if not self._check_binary():
             return False
+
+        # Kill any orphaned go-librespot from a previous module instance
+        self._kill_orphaned_process()
 
         if not self._check_port_available():
             return False
@@ -197,20 +268,28 @@ class LibrespotManager:
             LOGGER.error(f"Failed to start go-librespot: {e}")
             return False
 
-    def _wait_for_api_ready(self, timeout: float = 10.0, poll_interval: float = 0.2) -> bool:
+    def _wait_for_api_ready(self, timeout: float | None = None, poll_interval: float = 0.2) -> bool:
         """Wait for the go-librespot HTTP API to become responsive.
 
         Args:
-            timeout: Maximum time to wait in seconds.
+            timeout: Maximum time to wait in seconds. Defaults to self._api_ready_timeout.
             poll_interval: Time between polling attempts in seconds.
 
         Returns:
-            True if API became ready, False if timeout exceeded.
+            True if API became ready, False if timeout exceeded or shutdown requested.
         """
+        if timeout is None:
+            timeout = self._api_ready_timeout
+
         start_time = time.time()
         status_url = f"{self.api_url}/status"
 
         while time.time() - start_time < timeout:
+            # Check if shutdown was requested
+            if not self._should_run:
+                LOGGER.debug("Shutdown requested while waiting for API ready")
+                return False
+
             # Check if process died while waiting
             if self._process is None or self._process.poll() is not None:
                 LOGGER.error("go-librespot process died while waiting for API ready")
@@ -280,7 +359,9 @@ class LibrespotManager:
                         if self._start_process():
                             # Wait for API to be ready after restart
                             if not self._wait_for_api_ready():
-                                LOGGER.warning("go-librespot restarted but API not responsive")
+                                LOGGER.warning("go-librespot restarted but API not responsive, stopping")
+                                self._stop_process()
+                                # Let the next loop iteration trigger another restart attempt
                     elif self._restart_count >= self._max_restarts:
                         LOGGER.error("Max restarts reached, giving up")
                         self._should_run = False

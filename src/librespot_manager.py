@@ -3,6 +3,7 @@ Manager for go-librespot subprocess.
 
 Handles starting, monitoring, and restarting go-librespot.
 """
+
 import os
 import signal
 import socket
@@ -91,20 +92,16 @@ class LibrespotManager:
             # Device identification
             "device_name": self.device_name,
             "device_type": "speaker",
-
             # Audio settings
             "audio_backend": self.audio_backend,
             "audio_device": self.audio_device,
             "bitrate": self.bitrate,
-
             # Volume settings
             "initial_volume": self.initial_volume,
             "volume_steps": 64,
-
             # Zeroconf discovery (allows Spotify app to find device)
             "zeroconf_enabled": True,
             "zeroconf_port": 0,  # Auto-select port
-
             # Credentials - use zeroconf with persistence
             "credentials": {
                 "type": "zeroconf",
@@ -112,14 +109,12 @@ class LibrespotManager:
                     "persist_credentials": True,
                 },
             },
-
             # HTTP API server (localhost only, no CORS needed)
             "server": {
                 "enabled": True,
                 "address": "127.0.0.1",
                 "port": self.api_port,
             },
-
             # Logging
             "log_level": "info",
         }

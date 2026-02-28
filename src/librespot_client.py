@@ -3,6 +3,7 @@ HTTP/WebSocket client for go-librespot API.
 
 Provides methods for playback control and real-time status updates.
 """
+
 import json
 import threading
 import time
@@ -20,6 +21,7 @@ LOGGER = getLogger("gambit-robotics:service:spotify")
 @dataclass
 class TrackMetadata:
     """Current track metadata from go-librespot."""
+
     uri: str = ""
     name: str = ""
     artist: str = ""
@@ -40,6 +42,7 @@ class TrackMetadata:
 @dataclass
 class PlayerStatus:
     """Full player status."""
+
     active: bool = False
     track: TrackMetadata = field(default_factory=TrackMetadata)
     device_id: str = ""
@@ -241,26 +244,19 @@ class LibrespotClient:
 
     def seek(self, position_ms: int) -> bool:
         """Seek to position in current track."""
-        result = self._request(
-            "POST", "/player/seek",
-            json_data={"position": position_ms}
-        )
+        result = self._request("POST", "/player/seek", json_data={"position": position_ms})
         return result is not None
 
     def set_volume(self, volume: int) -> bool:
         """Set volume (0-100)."""
         volume = max(0, min(100, volume))
-        result = self._request(
-            "POST", "/player/volume",
-            json_data={"volume": volume}
-        )
+        result = self._request("POST", "/player/volume", json_data={"volume": volume})
         return result is not None
 
     def set_shuffle(self, enabled: bool) -> bool:
         """Set shuffle state."""
         result = self._request(
-            "POST", "/player/shuffle_context",
-            json_data={"shuffle_context": enabled}
+            "POST", "/player/shuffle_context", json_data={"shuffle_context": enabled}
         )
         return result is not None
 
@@ -270,33 +266,19 @@ class LibrespotClient:
         if mode == "off":
             # Disable both repeat modes
             r1 = self._request(
-                "POST", "/player/repeat_context",
-                json_data={"repeat_context": False}
+                "POST", "/player/repeat_context", json_data={"repeat_context": False}
             )
-            r2 = self._request(
-                "POST", "/player/repeat_track",
-                json_data={"repeat_track": False}
-            )
+            r2 = self._request("POST", "/player/repeat_track", json_data={"repeat_track": False})
             return r1 is not None and r2 is not None
         elif mode == "context":
-            r1 = self._request(
-                "POST", "/player/repeat_track",
-                json_data={"repeat_track": False}
-            )
-            r2 = self._request(
-                "POST", "/player/repeat_context",
-                json_data={"repeat_context": True}
-            )
+            r1 = self._request("POST", "/player/repeat_track", json_data={"repeat_track": False})
+            r2 = self._request("POST", "/player/repeat_context", json_data={"repeat_context": True})
             return r1 is not None and r2 is not None
         elif mode == "track":
             r1 = self._request(
-                "POST", "/player/repeat_context",
-                json_data={"repeat_context": False}
+                "POST", "/player/repeat_context", json_data={"repeat_context": False}
             )
-            r2 = self._request(
-                "POST", "/player/repeat_track",
-                json_data={"repeat_track": True}
-            )
+            r2 = self._request("POST", "/player/repeat_track", json_data={"repeat_track": True})
             return r1 is not None and r2 is not None
         else:
             LOGGER.warning(f"Unknown repeat mode: {mode}")
@@ -312,10 +294,7 @@ class LibrespotClient:
 
     def add_to_queue(self, uri: str) -> bool:
         """Add a track to the queue."""
-        result = self._request(
-            "POST", "/player/add_to_queue",
-            json_data={"uri": uri}
-        )
+        result = self._request("POST", "/player/add_to_queue", json_data={"uri": uri})
         return result is not None
 
     def get_queue(self) -> list[dict] | None:
@@ -442,10 +421,7 @@ class LibrespotClient:
     def get_cached_status(self, max_age: float = 1.0) -> PlayerStatus | None:
         """Get cached status if fresh enough, otherwise fetch new."""
         with self._status_lock:
-            if (
-                self._cached_status is not None
-                and time.time() - self._last_status_time < max_age
-            ):
+            if self._cached_status is not None and time.time() - self._last_status_time < max_age:
                 return self._cached_status
         return self.get_status()
 

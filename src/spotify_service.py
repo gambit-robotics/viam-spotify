@@ -5,6 +5,7 @@ This module exposes Spotify playback control through the Viam generic service AP
 Audio is played via go-librespot subprocess, which appears as a Spotify Connect device.
 Users connect from their Spotify app - no OAuth or developer app required.
 """
+
 import asyncio
 import io
 from collections import OrderedDict
@@ -45,9 +46,7 @@ def extract_colors(image_url: str) -> list[str]:
 class SpotifyService(Generic, Reconfigurable):
     """Spotify Connect playback control service."""
 
-    MODEL: ClassVar[Model] = Model(
-        ModelFamily("gambit-robotics", "service"), "spotify"
-    )
+    MODEL: ClassVar[Model] = Model(ModelFamily("gambit-robotics", "service"), "spotify")
 
     _manager: LibrespotManager | None = None
     _client: LibrespotClient | None = None
@@ -90,10 +89,14 @@ class SpotifyService(Generic, Reconfigurable):
 
         # Optional config with defaults
         api_port = int(attrs["api_port"].number_value) if "api_port" in attrs else 3678
-        audio_backend = attrs["audio_backend"].string_value if "audio_backend" in attrs else "pulseaudio"
+        audio_backend = (
+            attrs["audio_backend"].string_value if "audio_backend" in attrs else "pulseaudio"
+        )
         audio_device = attrs["audio_device"].string_value if "audio_device" in attrs else "default"
         bitrate = int(attrs["bitrate"].number_value) if "bitrate" in attrs else 320
-        initial_volume = int(attrs["initial_volume"].number_value) if "initial_volume" in attrs else 50
+        initial_volume = (
+            int(attrs["initial_volume"].number_value) if "initial_volume" in attrs else 50
+        )
 
         # Create manager and client
         self._manager = LibrespotManager(
@@ -346,9 +349,7 @@ class SpotifyService(Generic, Reconfigurable):
 
         position_ms = cmd.get("position_ms", 0)
         loop = asyncio.get_running_loop()
-        success = await loop.run_in_executor(
-            None, self._client.seek, int(position_ms)
-        )
+        success = await loop.run_in_executor(None, self._client.seek, int(position_ms))
         return {"success": success}
 
     async def _cmd_set_volume(self, cmd: Mapping[str, Any]) -> dict:
@@ -414,9 +415,7 @@ class SpotifyService(Generic, Reconfigurable):
 
         skip_to = cmd.get("skip_to_uri")
         loop = asyncio.get_running_loop()
-        success = await loop.run_in_executor(
-            None, self._client.play_uri, uri, skip_to
-        )
+        success = await loop.run_in_executor(None, self._client.play_uri, uri, skip_to)
         return {"success": success}
 
     async def _cmd_get_queue(self, cmd: Mapping[str, Any]) -> dict:
@@ -434,11 +433,13 @@ class SpotifyService(Generic, Reconfigurable):
         # Format queue tracks
         formatted = []
         for track in queue[:20]:
-            formatted.append({
-                "name": track.get("name"),
-                "artist": track.get("artist"),
-                "uri": track.get("uri"),
-            })
+            formatted.append(
+                {
+                    "name": track.get("name"),
+                    "artist": track.get("artist"),
+                    "uri": track.get("uri"),
+                }
+            )
 
         return {"queue": formatted}
 

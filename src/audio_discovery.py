@@ -4,6 +4,7 @@ Audio device discovery service.
 Discovers available audio output devices on the system to help users
 configure the spotify service with the correct audio_device setting.
 """
+
 import asyncio
 import platform
 import re
@@ -28,6 +29,7 @@ def _sanitize_name(s: str) -> str:
     """Convert to valid component name (lowercase, alphanumeric, hyphens)."""
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
+
 # Backend constants
 BACKEND_PIPEWIRE = "pipewire"
 BACKEND_PULSEAUDIO = "pulseaudio"
@@ -37,9 +39,7 @@ BACKEND_ALSA = "alsa"
 class AudioDiscovery(Discovery, Reconfigurable):
     """Discovers audio output devices available on the system."""
 
-    MODEL: ClassVar[Model] = Model(
-        ModelFamily("gambit-robotics", "service"), "audio-discovery"
-    )
+    MODEL: ClassVar[Model] = Model(ModelFamily("gambit-robotics", "service"), "audio-discovery")
 
     @classmethod
     def new(
@@ -141,16 +141,18 @@ class AudioDiscovery(Discovery, Reconfigurable):
                 card_id = match.group(2)
                 card_name = match.group(3)
                 device_num = match.group(4)
-                device_name = match.group(5)
+                device_name = match.group(5)  # noqa: F841
 
-                devices.append({
-                    "backend": BACKEND_ALSA,
-                    "name": f"hw:{card_num},{device_num}",
-                    "description": card_name,
-                    "card_id": card_id,
-                    "card_num": int(card_num),
-                    "device_num": int(device_num),
-                })
+                devices.append(
+                    {
+                        "backend": BACKEND_ALSA,
+                        "name": f"hw:{card_num},{device_num}",
+                        "description": card_name,
+                        "card_id": card_id,
+                        "card_num": int(card_num),
+                        "device_num": int(device_num),
+                    }
+                )
 
         return devices
 
@@ -205,7 +207,9 @@ class AudioDiscovery(Discovery, Reconfigurable):
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_PULSEAUDIO
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
-            config.attributes.fields["device_name"].string_value = device.get("description", "Speaker")
+            config.attributes.fields["device_name"].string_value = device.get(
+                "description", "Speaker"
+            )
             configs.append(config)
 
         # Add ALSA devices
@@ -218,7 +222,9 @@ class AudioDiscovery(Discovery, Reconfigurable):
             )
             config.attributes.fields["audio_backend"].string_value = BACKEND_ALSA
             config.attributes.fields["audio_device"].string_value = device.get("name", "default")
-            config.attributes.fields["device_name"].string_value = device.get("description", "Speaker")
+            config.attributes.fields["device_name"].string_value = device.get(
+                "description", "Speaker"
+            )
             configs.append(config)
 
         LOGGER.info(

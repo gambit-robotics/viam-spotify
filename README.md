@@ -1,5 +1,7 @@
 # Module spotify
 
+> **Warning:** This module is not currently working.
+
 Turns your device into a Spotify Connect speaker. Users connect from their Spotify app - no OAuth, no developer app required.
 
 ## Supported Platforms

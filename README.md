@@ -1,7 +1,5 @@
 # Module spotify
 
-> **Warning:** This module is not currently working.
-
 Turns your device into a Spotify Connect speaker. Users connect from their Spotify app - no OAuth, no developer app required.
 
 ## Supported Platforms
@@ -286,6 +284,46 @@ make run
 4. Test audio: `paplay /usr/share/sounds/alsa/Front_Center.wav`
 
 **Note:** Raspberry Pi OS Lite doesn't include PulseAudio. Set `audio_backend: alsa` in config.
+
+### ALSA device busy
+
+If you get `ALSA error at snd_pcm_open: Device or resource busy`, another process (e.g. `viam:system-audio:speaker`) is holding the audio device exclusively.
+
+**Fix:** Configure ALSA to use `dmix` so multiple modules can share the device. Edit `/etc/asound.conf`:
+
+```
+pcm.dmixer {
+    type dmix
+    ipc_key 1024
+    slave {
+        pcm "hw:Device,0"
+        rate 44100
+    }
+}
+
+pcm.!default {
+    type asym
+    playback.pcm {
+        type plug
+        slave.pcm "dmixer"
+    }
+    capture.pcm {
+        type plug
+        slave.pcm {
+            type hw
+            card Device
+            device 0
+        }
+    }
+}
+
+ctl.!default {
+    type hw
+    card Device
+}
+```
+
+Replace `Device` with your audio card name (check with `aplay -l`). Then set `audio_backend: alsa` and `audio_device: default` in the module config. Restart viam-server after applying.
 
 ### Connection drops
 

@@ -297,7 +297,7 @@ pcm.dmixer {
     ipc_key 1024
     slave {
         pcm "hw:Device,0"
-        rate 44100
+        rate 48000
     }
 }
 

@@ -141,7 +141,6 @@ class AudioDiscovery(Discovery, Reconfigurable):
                 card_id = match.group(2)
                 card_name = match.group(3)
                 device_num = match.group(4)
-                device_name = match.group(5)  # noqa: F841
 
                 devices.append(
                     {

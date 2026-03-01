@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_NAME="venv"
 DIST_DIR="$SCRIPT_DIR/dist"
-LIBRESPOT_VERSION="v0.6.2"
+LIBRESPOT_VERSION="$(cat "$SCRIPT_DIR/LIBRESPOT_VERSION" | tr -d '[:space:]')"
 
 cd "$SCRIPT_DIR"
 
@@ -83,7 +83,6 @@ pyinstaller --onefile --noconfirm \
     --hidden-import=viam.services.generic \
     --hidden-import=colorthief \
     --hidden-import=requests \
-    --hidden-import=websocket \
     --hidden-import=yaml \
     --hidden-import=audio_discovery \
     --hidden-import=spotify_service \

@@ -6,7 +6,7 @@ VENV_NAME="venv"
 PYTHON="python3"
 
 # go-librespot version and paths
-LIBRESPOT_VERSION="v0.6.2"
+LIBRESPOT_VERSION="$(cat "$SCRIPT_DIR/LIBRESPOT_VERSION" | tr -d '[:space:]')"
 LIBRESPOT_BIN="/usr/local/bin/go-librespot"
 
 # Detect platform and get archive name (Linux only)

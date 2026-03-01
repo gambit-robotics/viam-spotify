@@ -75,30 +75,6 @@ class TestLibrespotClientParsing:
         ])
         assert result == "Artist One, Artist Two"
 
-    def test_get_best_image_empty(self):
-        """Test getting best image from empty list."""
-        client = LibrespotClient()
-        result = client._get_best_image([])
-        assert result == ""
-
-    def test_get_best_image_single(self):
-        """Test getting best image from single image."""
-        client = LibrespotClient()
-        result = client._get_best_image([
-            {"url": "http://example.com/img.jpg", "width": 300, "height": 300}
-        ])
-        assert result == "http://example.com/img.jpg"
-
-    def test_get_best_image_multiple(self):
-        """Test getting best image selects largest."""
-        client = LibrespotClient()
-        result = client._get_best_image([
-            {"url": "http://example.com/small.jpg", "width": 64, "height": 64},
-            {"url": "http://example.com/large.jpg", "width": 640, "height": 640},
-            {"url": "http://example.com/medium.jpg", "width": 300, "height": 300},
-        ])
-        assert result == "http://example.com/large.jpg"
-
     def test_parse_status_full(self):
         """Test parsing full status response."""
         client = LibrespotClient()

@@ -98,6 +98,16 @@ No configuration attributes required.
 
 Call `discover_resources()` to get suggested Spotify configurations for each detected audio device.
 
+### do_command()
+
+The audio discovery service also supports direct commands:
+
+| Command | Returns |
+|---------|---------|
+| `get_backend` | `{backend: "pipewire" \| "pulseaudio" \| "alsa"}` |
+| `list_sinks` | `{sinks: [{name, description, state, ...}, ...]}` |
+| `list_alsa` | `{devices: [{name, description, card_id, ...}, ...]}` |
+
 ---
 
 ## How It Works
@@ -138,7 +148,7 @@ The module runs [go-librespot](https://github.com/devgianlu/go-librespot) as a s
   "device_id": "abc123",
   "device_name": "Kitchen Chef",
   "username": "spotify_user_id",
-  "device_type": "SPEAKER",
+  "device_type": "speaker",
   "play_origin": "playlist",
   "buffering": false,
   "volume_steps": 64,
@@ -337,6 +347,45 @@ Replace `Device` with your audio card name (check with `aplay -l`). Then set `au
 - **No search/browse/library access** - This module uses the Spotify Connect protocol (go-librespot), not the Spotify Web API. You can control playback (play, pause, skip, volume, etc.) and play any URI if you know it, but you cannot search for tracks or access user playlists. Users search on their phone and cast to the device - same model as Sonos or Chromecast.
 - **Protocol changes** - Spotify can break librespot (rare, usually fixed quickly)
 - **Linux only** - This module only supports Linux (x64 and ARM64)
+
+## Deployment
+
+Releases are published to the [Viam Registry](https://app.viam.com/) via GitHub Actions. The process is tag-driven.
+
+### Prerequisites
+
+- Push access to the repository
+- Repository secrets `VIAM_KEY_ID` and `VIAM_KEY_VALUE` configured (used by `viamrobotics/build-action`)
+
+### How it works
+
+1. **CI checks** run on every pull request (`.github/workflows/checks.yml`): lint, typecheck, and tests
+2. **Build validation** runs on every pull request (`.github/workflows/build.yml`): full `make module.tar.gz` build without deploying
+3. **Deploy** is triggered by pushing a version tag (`.github/workflows/deploy.yml`)
+
+### Release workflow
+
+```bash
+# 1. Create and push a version tag
+git tag v1.2.3
+git push origin v1.2.3
+
+# 2. The deploy workflow runs automatically:
+#    - Checks out the tagged commit
+#    - Runs viamrobotics/build-action which:
+#      - Executes setup.sh (installs deps + go-librespot)
+#      - Runs `make module.tar.gz` (PyInstaller build + bundles go-librespot binary)
+#      - Uploads module.tar.gz to the Viam Registry as version v1.2.3
+```
+
+### What gets packaged
+
+The build (`build.sh`) produces a `module.tar.gz` containing:
+
+- `spotify-module` — PyInstaller-compiled single binary (Python code + all dependencies)
+- `go-librespot` — pre-built binary downloaded from [devgianlu/go-librespot](https://github.com/devgianlu/go-librespot) (version pinned in `LIBRESPOT_VERSION`)
+
+The module is built separately for each target architecture (`linux/amd64`, `linux/arm64`) as defined in `meta.json`.
 
 ## Roadmap / TODO
 
